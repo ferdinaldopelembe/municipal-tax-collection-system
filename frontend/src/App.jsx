@@ -3,6 +3,8 @@ import { AuthProvider } from "./context/AuthContext";
 import { ProtectedRoute } from "./routes/router";
 import AppLayout from "./components/layout/AppLayout";
 import LoginPage from "./features/auth/LoginPage";
+import FiscaisPage from "./features/fiscais/FiscaisPage";
+import NovoFiscalPage from "./features/fiscais/NovoFiscalPage";
 import DashboardPage from "./features/dashboard/DashboardPage";
 import MercadosPage from "./features/mercados/MercadosPage";
 import MercadoDetailPage from "./features/mercados/MercadoDetailPage";
@@ -10,7 +12,15 @@ import ComerciantesPage from "./features/comerciantes/ComerciantesPage";
 import NovoComerciantePage from "./features/comerciantes/NovoComerciantePage";
 import PagamentosPage from "./features/pagamentos/PagamentosPage";
 import RegistarPagamentoPage from "./features/pagamentos/RegistarPagamentoPage";
+import TaxasPage from "./features/taxas/TaxasPage";
 // Placeholders temporários — cada um será substituído na sua tela
+import SenhasPage from "./features/senhas/SenhasPage";
+import RelatoriosPage from "./features/relatorios/RelatoriosPage";
+import NovaTaxaPage from "./features/taxas/NovaTaxaPage";
+import EmitirSenhaPage from "./features/senhas/EmitirSenhaPage";
+import AuditoriaPage from "./features/auditoria/AuditoriaPage";
+import ConfiguracoesPage from "./features/configuracoes/ConfiguracoesPage";
+
 function Placeholder({ title }) {
   return (
     <div>
@@ -37,15 +47,21 @@ export default function App() {
               <Route path="/mercados/:id" element={<MercadoDetailPage />} />
               <Route path="/comerciantes" element={<ComerciantesPage />} />
               <Route path="/comerciantes/novo" element={<NovoComerciantePage />} />
-              <Route path="/taxas" element={<Placeholder title="Taxas" />} />
-              <Route path="/senhas" element={<Placeholder title="Senhas" />} />
+              <Route path="/taxas" element={<TaxasPage />} />
+              <Route path="/taxas/nova" element={<NovaTaxaPage />} />
+              <Route path="/senhas" element={<SenhasPage />} />
+              <Route path="/senhas/nova" element={<EmitirSenhaPage />} />
+              <Route path="/senhas/:id" element={<Placeholder title="Detalhe da senha" />} />        
               <Route path="/pagamentos" element={<PagamentosPage />} />
               <Route path="/pagamentos/novo" element={<RegistarPagamentoPage />} />
-              <Route path="/fiscais" element={<Placeholder title="Fiscais" />} />
-              <Route path="/relatorios" element={<Placeholder title="Relatórios" />} />
-              <Route path="/auditoria" element={<Placeholder title="Auditoria" />} />
-              <Route path="/configuracoes" element={<Placeholder title="Configurações" />} />
+              <Route path="/fiscais" element={<FiscaisPage />} />
+              <Route path="/fiscais/novo" element={<NovoFiscalPage />} />
+              <Route path="/fiscais/novo" element={<Placeholder title="Novo fiscal" />} />
+              <Route path="/relatorios" element={<RelatoriosPage />} />
+              <Route path="/auditoria" element={<AuditoriaPage />} />
+              <Route path="/configuracoes" element={<ConfiguracoesPage />} />
             </Route>
+
           </Route>
 
           <Route path="*" element={<Navigate to="/login" replace />} />

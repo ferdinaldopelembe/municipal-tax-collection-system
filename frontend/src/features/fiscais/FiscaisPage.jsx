@@ -1,17 +1,17 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Plus,
   Search,
   Eye,
   Pencil,
-  MoreHorizontal,
+  UserX,
+  UserCheck,
 } from "lucide-react";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
-import Input from "../../components/ui/Input";
-import Select from "../../components/ui/Select";
 import Badge from "../../components/ui/Badge";
-import Modal from "../../components/ui/Modal";
+import Tooltip from "../../components/ui/Tooltip";
 import {
   Table,
   THead,
@@ -21,27 +21,61 @@ import {
   TD,
 } from "../../components/ui/Table";
 import Pagination from "../../components/ui/Pagination";
-import { formatMT } from "../../lib/format";
 import { FISCAIS, MERCADOS } from "../../data/mock";
 
-const PAGE_SIZE = 7;
+const PAGE_SIZE = 8;
+const CHAVE_NOVO_FISCAL = "proxima:novo-fiscal";
+
+const estadoVariants = {
+  Activo: "success",
+  Inactivo: "neutral",
+};
+
+// Lê os fiscais base do mock e, se existir um novo fiscal guardado
+// em sessionStorage (vindo da página /fiscais/novo), insere-o no topo.
+function lerFiscaisIniciais() {
+  const base = [...FISCAIS];
+  const raw = sessionStorage.getItem(CHAVE_NOVO_FISCAL);
+  if (raw) {
+    try {
+      const novo = JSON.parse(raw);
+      if (novo && novo.id && !base.some((f) => f.id === novo.id)) {
+        base.unshift(novo);
+      }
+    } catch {
+      /* ignorar JSON inválido */
+    }
+  }
+  return base;
+}
 
 export default function FiscaisPage() {
-  const [fiscais, setFiscais] = useState(FISCAIS);
+  const [fiscais, setFiscais] = useState(lerFiscaisIniciais);
   const [pesquisa, setPesquisa] = useState("");
   const [mercado, setMercado] = useState("");
+  const [estado, setEstado] = useState("");
   const [page, setPage] = useState(1);
 
-  // Modal "Novo fiscal"
-  const [novoOpen, setNovoOpen] = useState(true);
-  const [form, setForm] = useState({
-    nome: "",
-    telefone: "",
-    email: "",
-    mercado: "",
-    senhaTemporaria: "",
-  });
-  const [formError, setFormError] = useState("");
+  // Sempre que a página /fiscais/novo grava, dispara o evento "novo-fiscal".
+  // Aqui adicionamos o novo fiscal à lista sem duplicar.
+  useEffect(() => {
+    function onNovo() {
+      const raw = sessionStorage.getItem(CHAVE_NOVO_FISCAL);
+      if (!raw) return;
+      try {
+        const novo = JSON.parse(raw);
+        setFiscais((prev) =>
+          prev.some((f) => f.id === novo.id) ? prev : [novo, ...prev]
+        );
+        // Limpa para não duplicar em remounts/recarregamentos
+        sessionStorage.removeItem(CHAVE_NOVO_FISCAL);
+      } catch {
+        /* ignorar */
+      }
+    }
+    window.addEventListener("novo-fiscal", onNovo);
+    return () => window.removeEventListener("novo-fiscal", onNovo);
+  }, []);
 
   const filtrados = useMemo(() => {
     const q = pesquisa.trim().toLowerCase();
@@ -49,64 +83,40 @@ export default function FiscaisPage() {
       const matchQ =
         !q ||
         f.nome.toLowerCase().includes(q) ||
-        f.telefone.replace(/\s/g, "").includes(q.replace(/\s/g, ""));
+        f.nuit.includes(q) ||
+        f.contacto.replace(/\s/g, "").includes(q.replace(/\s/g, "")) ||
+        f.email.toLowerCase().includes(q);
       const matchMercado = !mercado || f.mercado === mercado;
-      return matchQ && matchMercado;
+      const matchEstado = !estado || f.estado === estado;
+      return matchQ && matchMercado && matchEstado;
     });
-  }, [fiscais, pesquisa, mercado]);
+  }, [fiscais, pesquisa, mercado, estado]);
 
   const totalPages = Math.max(1, Math.ceil(filtrados.length / PAGE_SIZE));
   const pageItems = filtrados.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  function resetPage(setter) {
+  function resetPage(fn) {
     return (e) => {
-      setter(e.target.value);
+      fn(e.target.value);
       setPage(1);
     };
   }
 
-  function abrirNovo() {
-    setForm({
-      nome: "",
-      telefone: "",
-      email: "",
-      mercado: "",
-      senhaTemporaria: "",
-    });
-    setFormError("");
-    setNovoOpen(true);
-  }
-
-  function gerarSenhaTemporaria() {
-    const senha =
-      "FSC-" +
-      Math.random().toString(36).slice(2, 6).toUpperCase() +
-      Math.floor(1000 + Math.random() * 9000);
-    setForm((f) => ({ ...f, senhaTemporaria: senha }));
-  }
-
-  function guardar() {
-    if (!form.nome.trim() || !form.telefone.trim() || !form.mercado) {
-      setFormError("Preencha Nome, Telefone e Mercado para guardar.");
-      return;
-    }
-    if (!form.senhaTemporaria) {
-      setFormError("Gere uma senha temporária para o novo fiscal.");
-      return;
-    }
-    const novo = {
-      id: fiscais.length + 1,
-      nome: form.nome.trim(),
-      telefone: form.telefone.trim(),
-      email: form.email.trim() || "—",
-      mercado: form.mercado,
-      senhasValidadas: 0,
-      totalCobrado: 0,
-      estado: "Activo",
-    };
-    setFiscais((prev) => [novo, ...prev]);
-    setNovoOpen(false);
-    setPage(1);
+  function toggleEstado(f) {
+    const inactivo = f.estado === "Inactivo";
+    setFiscais((prev) =>
+      prev.map((x) =>
+        x.id === f.id
+          ? {
+              ...x,
+              estado: inactivo ? "Activo" : "Inactivo",
+              motivoInactividade: inactivo
+                ? undefined
+                : "Desactivado manualmente pelo gestor",
+            }
+          : x
+      )
+    );
   }
 
   return (
@@ -116,13 +126,15 @@ export default function FiscaisPage() {
         <div>
           <h1 className="text-2xl font-semibold text-text">Fiscais</h1>
           <p className="mt-1 text-sm text-text-muted">
-            Gestão dos fiscais dos mercados informais do Município da Beira.
+            {fiscais.length} fiscais registados nos mercados informais.
           </p>
         </div>
-        <Button onClick={abrirNovo}>
-          <Plus size={16} />
-          Novo fiscal
-        </Button>
+        <Link to="/fiscais/novo">
+          <Button>
+            <Plus size={16} />
+            Novo fiscal
+          </Button>
+        </Link>
       </div>
 
       {/* Filtros */}
@@ -134,7 +146,7 @@ export default function FiscaisPage() {
           />
           <input
             type="text"
-            placeholder="Pesquisar por nome ou telefone…"
+            placeholder="Pesquisar por nome, NUIT, telefone ou e-mail…"
             value={pesquisa}
             onChange={resetPage(setPesquisa)}
             className="h-10 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-sm text-text placeholder:text-text-muted/70 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -153,6 +165,16 @@ export default function FiscaisPage() {
             </option>
           ))}
         </select>
+
+        <select
+          value={estado}
+          onChange={resetPage(setEstado)}
+          className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+        >
+          <option value="">Todos os estados</option>
+          <option value="Activo">Activo</option>
+          <option value="Inactivo">Inactivo</option>
+        </select>
       </Card>
 
       {/* Tabela */}
@@ -160,30 +182,32 @@ export default function FiscaisPage() {
         <Table>
           <THead>
             <TH>Nome</TH>
-            <TH>Telefone</TH>
-            <TH>Mercado atribuído</TH>
-            <TH className="text-right">Senhas validadas (mês)</TH>
-            <TH className="text-right">Total cobrado (mês)</TH>
+            <TH>NUIT</TH>
+            <TH>Contacto</TH>
+            <TH>E-mail</TH>
+            <TH>Mercado</TH>
+            <TH>Zona / Turno</TH>
             <TH>Estado</TH>
             <TH className="text-right">Acções</TH>
           </THead>
           <TBody>
             {pageItems.map((f) => (
               <TR key={f.id}>
-                <TD>
-                  <span className="block font-medium text-text">{f.nome}</span>
-                  <span className="text-xs text-text-muted">{f.email}</span>
-                </TD>
-                <TD className="text-text-muted">{f.telefone}</TD>
+                <TD className="font-medium text-text">{f.nome}</TD>
+                <TD className="font-mono text-xs text-text-muted">{f.nuit}</TD>
+                <TD className="text-text-muted">{f.contacto}</TD>
+                <TD className="text-text-muted">{f.email}</TD>
                 <TD className="text-text">{f.mercado}</TD>
-                <TD className="text-right text-text">{f.senhasValidadas}</TD>
-                <TD className="text-right font-medium text-text">
-                  {formatMT(f.totalCobrado)}
+                <TD className="text-text">
+                  <span className="block text-sm">{f.zona}</span>
+                  <span className="text-xs text-text-muted">{f.turno}</span>
                 </TD>
                 <TD>
-                  <Badge variant={f.estado === "Activo" ? "success" : "neutral"}>
-                    {f.estado}
-                  </Badge>
+                  <Tooltip content={f.motivoInactividade || ""}>
+                    <Badge variant={estadoVariants[f.estado]}>
+                      {f.estado}
+                    </Badge>
+                  </Tooltip>
                 </TD>
                 <TD className="text-right">
                   <div className="flex items-center justify-end gap-1">
@@ -203,9 +227,16 @@ export default function FiscaisPage() {
                     </button>
                     <button
                       className="rounded-md p-1.5 text-text-muted hover:bg-slate-100 hover:text-text"
-                      title="Mais acções"
+                      title={
+                        f.estado === "Inactivo" ? "Activar fiscal" : "Desactivar fiscal"
+                      }
+                      onClick={() => toggleEstado(f)}
                     >
-                      <MoreHorizontal size={16} />
+                      {f.estado === "Inactivo" ? (
+                        <UserCheck size={16} />
+                      ) : (
+                        <UserX size={16} />
+                      )}
                     </button>
                   </div>
                 </TD>
@@ -223,99 +254,6 @@ export default function FiscaisPage() {
 
         <Pagination page={page} totalPages={totalPages} onChange={setPage} />
       </Card>
-
-      {/* Texto auxiliar */}
-      <p className="text-xs text-text-muted">
-        O fiscal só pode validar senhas do mercado atribuído.
-      </p>
-
-      {/* Modal Novo Fiscal */}
-      <Modal
-        open={novoOpen}
-        onClose={() => setNovoOpen(false)}
-        title="Novo fiscal"
-        description="Registe um novo fiscal e atribua-o a um mercado."
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setNovoOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={guardar}>Guardar</Button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <Input
-            id="nome-fiscal"
-            label="Nome"
-            placeholder="Ex.: Armando Tembe"
-            value={form.nome}
-            onChange={(e) => setForm({ ...form, nome: e.target.value })}
-          />
-          <Input
-            id="telefone-fiscal"
-            label="Telefone"
-            placeholder="+258 84 123 4567"
-            value={form.telefone}
-            onChange={(e) => setForm({ ...form, telefone: e.target.value })}
-          />
-          <Input
-            id="email-fiscal"
-            label="E-mail (opcional)"
-            type="email"
-            placeholder="nome@beira.gov.mz"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-          />
-          <Select
-            id="mercado-fiscal"
-            label="Mercado"
-            value={form.mercado}
-            onChange={(e) => setForm({ ...form, mercado: e.target.value })}
-          >
-            <option value="">Selecione o mercado</option>
-            {MERCADOS.map((m) => (
-              <option key={m.id} value={m.nome}>
-                {m.nome}
-              </option>
-            ))}
-          </Select>
-
-          <div>
-            <label
-              htmlFor="senha-fiscal"
-              className="mb-1.5 block text-sm font-medium text-text"
-            >
-              Senha temporária
-            </label>
-            <div className="flex gap-2">
-              <input
-                id="senha-fiscal"
-                readOnly
-                value={form.senhaTemporaria}
-                placeholder="Clique em Gerar para criar"
-                className="h-10 flex-1 rounded-lg border border-border bg-slate-50 px-3 font-mono text-sm text-text focus:outline-none"
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={gerarSenhaTemporaria}
-              >
-                Gerar
-              </Button>
-            </div>
-            <p className="mt-1.5 text-xs text-text-muted">
-              O fiscal deverá alterar esta senha no primeiro acesso à app.
-            </p>
-          </div>
-
-          {formError && (
-            <div className="rounded-lg border border-danger/20 bg-danger/5 px-3 py-2.5 text-sm text-danger">
-              {formError}
-            </div>
-          )}
-        </div>
-      </Modal>
     </div>
   );
 }
