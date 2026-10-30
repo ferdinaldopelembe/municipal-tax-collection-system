@@ -1,388 +1,370 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   TrendingUp,
-  TrendingDown,
-  Wallet,
-  Ticket,
+  Receipt,
   Users,
-  AlertCircle,
-  CheckCircle2,
+  Percent,
+  ArrowRight,
+  Calendar,
 } from "lucide-react";
 import Card from "../../components/ui/Card";
-import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
-import { formatMT, formatPercent, formatDateTime } from "../../lib/format";
+import Badge from "../../components/ui/Badge";
+import BarChart from "../../components/ui/BarChart";
+import LineChart from "../../components/ui/LineChart";
+import {
+  Table,
+  THead,
+  TH,
+  TBody,
+  TR,
+  TD,
+} from "../../components/ui/Table";
 import {
   MERCADOS,
-  KPI_DADOS,
-  ARRECADACAO_DIARIA,
-  ARRECADACAO_POR_MERCADO,
-  DESEMPENHO_FISCAIS,
-  METODOS_PAGAMENTO,
-  PAGAMENTOS_NUMERARIO_PENDENTES,
+  DASHBOARD_TRANSACOES,
+  COMERCIANTES_RECENTES,
 } from "../../data/mock";
+import { formatMT } from "../../utils/format";
 
-/* ---------- Filtros ---------- */
-function Filters({ mercado, periodo, onMercado, onPeriodo }) {
-  return (
-    <div className="flex flex-wrap items-center gap-3">
-      <select
-        value={mercado}
-        onChange={(e) => onMercado(e.target.value)}
-        className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-      >
-        <option value="">Todos os mercados</option>
-        {MERCADOS.map((m) => (
-          <option key={m.id} value={m.nome}>
-            {m.nome}
-          </option>
-        ))}
-      </select>
-      <select
-        value={periodo}
-        onChange={(e) => onPeriodo(e.target.value)}
-        className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-      >
-        <option value="hoje">Hoje</option>
-        <option value="7dias">7 dias</option>
-        <option value="mes">Este mês</option>
-      </select>
-    </div>
-  );
-}
+const PERIODOS = [
+  { value: "hoje", label: "Hoje", dias: 1 },
+  { value: "7d", label: "Últimos 7 dias", dias: 7 },
+  { value: "30d", label: "Últimos 30 dias", dias: 30 },
+];
 
-/* ---------- Cartões KPI ---------- */
-function KpiCard({ label, value, variacao, icon: Icon, suffix = "MT" }) {
-  const positive = variacao >= 0;
-  const formatted =
-    suffix === "MT" ? formatMT(value) : String(value);
-  return (
-    <Card className="p-5">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-sm text-text-muted">{label}</p>
-          <p className="mt-2 text-2xl font-semibold text-text">{formatted}</p>
-          <p
-            className={`mt-1 inline-flex items-center gap-1 text-xs font-medium ${
-              positive ? "text-success" : "text-danger"
-            }`}
-          >
-            {positive ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-            {formatPercent(variacao)}
-            <span className="text-text-muted font-normal">vs. período anterior</span>
-          </p>
-        </div>
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-soft text-primary">
-          <Icon size={18} />
-        </div>
-      </div>
-    </Card>
-  );
-}
+const estadoVariants = {
+  Regular: "success",
+  "Em dívida": "warning",
+  Bloqueado: "danger",
+};
 
-/* ---------- Gráfico de linha (SVG puro) ---------- */
-function LineChart({ data }) {
-  const width = 640;
-  const height = 240;
-  const padding = { top: 16, right: 16, bottom: 32, left: 56 };
-  const w = width - padding.left - padding.right;
-  const h = height - padding.top - padding.bottom;
-
-  const max = Math.max(...data.map((d) => d.valor));
-  const min = 0;
-
-  const points = data.map((d, i) => {
-    const x = padding.left + (i / (data.length - 1)) * w;
-    const y = padding.top + h - ((d.valor - min) / (max - min)) * h;
-    return [x, y];
-  });
-  const line = points.map((p) => p.join(",")).join(" ");
-
-  const yTicks = 4;
-  const yLabels = Array.from({ length: yTicks + 1 }, (_, i) => {
-    const v = min + ((max - min) * i) / yTicks;
-    return {
-      v,
-      y: padding.top + h - (i / yTicks) * h,
-    };
-  });
-
-  const xLabels = [0, 9, 19, 29].map((i) => ({
-    label: `${data[i].dia}/02`,
-    x: padding.left + (i / (data.length - 1)) * w,
-  }));
-
-  return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      className="h-60 w-full"
-      role="img"
-      aria-label="Arrecadação diária"
-    >
-      {/* Grid horizontal + labels Y */}
-      {yLabels.map((t) => (
-        <g key={t.v}>
-          <line
-            x1={padding.left}
-            x2={width - padding.right}
-            y1={t.y}
-            y2={t.y}
-            stroke="#E2E8F0"
-            strokeWidth="1"
-          />
-          <text
-            x={padding.left - 8}
-            y={t.y + 4}
-            textAnchor="end"
-            fontSize="11"
-            fill="#64748B"
-          >
-            {Math.round(t.v / 1000)}k
-          </text>
-        </g>
-      ))}
-
-      {/* Linha */}
-      <polyline
-        points={line}
-        fill="none"
-        stroke="#14532D"
-        strokeWidth="2"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-
-      {/* Pontos */}
-      {points.map(([x, y], i) => (
-        <circle key={i} cx={x} cy={y} r="2.5" fill="#14532D" />
-      ))}
-
-      {/* Labels X */}
-      {xLabels.map((l) => (
-        <text
-          key={l.label}
-          x={l.x}
-          y={height - 10}
-          textAnchor="middle"
-          fontSize="11"
-          fill="#64748B"
-        >
-          {l.label}
-        </text>
-      ))}
-    </svg>
-  );
-}
-
-/* ---------- Barras horizontais ---------- */
-function HBars({ items, valueKey = "valor", labelKey = "mercado", format = formatMT }) {
-  const max = Math.max(...items.map((i) => i[valueKey]));
-  return (
-    <ul className="space-y-3.5">
-      {items.map((item) => {
-        const pct = (item[valueKey] / max) * 100;
-        return (
-          <li key={item[labelKey]}>
-            <div className="mb-1 flex items-center justify-between text-sm">
-              <span className="text-text">{item[labelKey]}</span>
-              <span className="font-medium text-text">{format(item[valueKey])}</span>
-            </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
-              <div
-                className="h-full rounded-full bg-primary"
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-/* ---------- Página ---------- */
 export default function DashboardPage() {
   const [mercado, setMercado] = useState("");
-  const [periodo, setPeriodo] = useState("hoje");
-  const [pendentes, setPendentes] = useState(PAGAMENTOS_NUMERARIO_PENDENTES);
+  const [periodo, setPeriodo] = useState("7d");
 
-  function validar(id) {
-    setPendentes((prev) => prev.filter((p) => p.id !== id));
-  }
+  // --- 1. Filtragem central dos dados ---
+  const dadosFiltrados = useMemo(() => {
+    const dias = PERIODOS.find((p) => p.value === periodo)?.dias ?? 7;
+
+    // Data de corte = max(data) - (dias - 1)
+    const todasDatas = Array.from(
+      new Set(DASHBOARD_TRANSACOES.map((t) => t.data))
+    ).sort();
+    const dataMax = todasDatas[todasDatas.length - 1];
+    const corte = new Date(dataMax + "T00:00:00");
+    corte.setDate(corte.getDate() - (dias - 1));
+    const corteIso = corte.toISOString().slice(0, 10);
+
+    return DASHBOARD_TRANSACOES.filter((t) => {
+      const noPeriodo = t.data >= corteIso;
+      const noMercado = !mercado || t.mercado === mercado;
+      return noPeriodo && noMercado;
+    });
+  }, [mercado, periodo]);
+
+  // --- 2. KPIs derivados ---
+  const kpis = useMemo(() => {
+    const receita = dadosFiltrados.reduce((s, t) => s + t.receita, 0);
+    const transacoes = dadosFiltrados.reduce((s, t) => s + t.transacoes, 0);
+    const comerciantes = dadosFiltrados.reduce(
+      (s, t) => s + t.comerciantes,
+      0
+    );
+    const mediaPorTransacao = transacoes ? receita / transacoes : 0;
+    const taxaCobranca = Math.min(
+      100,
+      Math.round((receita / (transacoes * 60 || 1)) * 100)
+    );
+    return { receita, transacoes, comerciantes, mediaPorTransacao, taxaCobranca };
+  }, [dadosFiltrados]);
+
+  // --- 3. Série diária para o gráfico de linha ---
+  const serieDiaria = useMemo(() => {
+    const mapa = new Map();
+    dadosFiltrados.forEach((t) => {
+      mapa.set(t.data, (mapa.get(t.data) || 0) + t.receita);
+    });
+    const datas = [...mapa.keys()].sort();
+    return datas.map((iso) => {
+      const [y, m, d] = iso.split("-");
+      return {
+        dia: `${d}/${m}`,
+        valor: Math.round(mapa.get(iso) * 100) / 100,
+      };
+    });
+  }, [dadosFiltrados]);
+
+  // --- 4. Receita por mercado para o gráfico de barras ---
+  const seriePorMercado = useMemo(() => {
+    const mapa = new Map();
+    dadosFiltrados.forEach((t) => {
+      mapa.set(t.mercado, (mapa.get(t.mercado) || 0) + t.receita);
+    });
+    return [...mapa.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([nome, valor]) => ({
+        label: nome.replace("Mercado do ", "").replace("Mercado da ", ""),
+        valor: Math.round(valor * 100) / 100,
+      }));
+  }, [dadosFiltrados]);
+
+  // --- 5. Top comerciantes recentes (respeitando filtro de mercado) ---
+  const comerciantesFiltrados = useMemo(
+    () =>
+      COMERCIANTES_RECENTES.filter(
+        (c) => !mercado || c.mercado === mercado
+      ).slice(0, 5),
+    [mercado]
+  );
+
+  // --- 6. Comparação com período anterior (para o badge de tendência) ---
+  const tendencia = useMemo(() => {
+    const dias = PERIODOS.find((p) => p.value === periodo)?.dias ?? 7;
+    const todasDatas = Array.from(
+      new Set(DASHBOARD_TRANSACOES.map((t) => t.data))
+    ).sort();
+    const dataMax = todasDatas[todasDatas.length - 1];
+
+    const fimAtual = new Date(dataMax + "T00:00:00");
+    const inicioAtual = new Date(fimAtual);
+    inicioAtual.setDate(inicioAtual.getDate() - (dias - 1));
+
+    const fimAnterior = new Date(inicioAtual);
+    fimAnterior.setDate(fimAnterior.getDate() - 1);
+    const inicioAnterior = new Date(fimAnterior);
+    inicioAnterior.setDate(inicioAnterior.getDate() - (dias - 1));
+
+    const iso = (d) => d.toISOString().slice(0, 10);
+    const soma = (de, ate) =>
+      DASHBOARD_TRANSACOES.filter(
+        (t) =>
+          t.data >= de &&
+          t.data <= ate &&
+          (!mercado || t.mercado === mercado)
+      ).reduce((s, t) => s + t.receita, 0);
+
+    const atual = soma(iso(inicioAtual), iso(fimAtual));
+    const anterior = soma(iso(inicioAnterior), iso(fimAnterior));
+    const delta = anterior ? ((atual - anterior) / anterior) * 100 : 0;
+    return Math.round(delta * 10) / 10;
+  }, [mercado, periodo]);
 
   return (
     <div className="space-y-6">
       {/* Cabeçalho + filtros */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-text">Dashboard</h1>
           <p className="mt-1 text-sm text-text-muted">
-            Visão geral da arrecadação de taxas nos mercados informais.
+            Visão geral em tempo real dos mercados informais.
           </p>
         </div>
-        <Filters
-          mercado={mercado}
-          periodo={periodo}
-          onMercado={setMercado}
-          onPeriodo={setPeriodo}
-        />
+
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={mercado}
+            onChange={(e) => setMercado(e.target.value)}
+            className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="">Todos os mercados</option>
+            {MERCADOS.map((m) => (
+              <option key={m.id} value={m.nome}>
+                {m.nome}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={periodo}
+            onChange={(e) => setPeriodo(e.target.value)}
+            className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+          >
+            {PERIODOS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* KPIs */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
-          label="Arrecadado hoje"
-          value={KPI_DADOS.hoje.valor}
-          variacao={KPI_DADOS.hoje.variacao}
-          icon={Wallet}
+          icon={<TrendingUp size={18} />}
+          label="Receita total"
+          value={formatMT(kpis.receita)}
+          hint={
+            <span
+              className={
+                tendencia >= 0 ? "text-emerald-600" : "text-rose-600"
+              }
+            >
+              {tendencia >= 0 ? "▲" : "▼"} {Math.abs(tendencia)}% vs. período anterior
+            </span>
+          }
+          accent="primary"
         />
         <KpiCard
-          label="Arrecadado no mês"
-          value={KPI_DADOS.mes.valor}
-          variacao={KPI_DADOS.mes.variacao}
-          icon={TrendingUp}
+          icon={<Receipt size={18} />}
+          label="Transacções"
+          value={kpis.transacoes.toLocaleString("pt-MZ")}
+          hint={`Média ${formatMT(kpis.mediaPorTransacao)} por transacção`}
+          accent="info"
         />
         <KpiCard
-          label="Senhas pendentes"
-          value={KPI_DADOS.senhasPendentes.valor}
-          variacao={KPI_DADOS.senhasPendentes.variacao}
-          icon={Ticket}
-          suffix="num"
+          icon={<Users size={18} />}
+          label="Comerciantes activos"
+          value={kpis.comerciantes.toLocaleString("pt-MZ")}
+          hint="Com pelo menos uma cobrança"
+          accent="success"
         />
         <KpiCard
-          label="Comerciantes bloqueados"
-          value={KPI_DADOS.bloqueados.valor}
-          variacao={KPI_DADOS.bloqueados.variacao}
-          icon={Users}
-          suffix="num"
+          icon={<Percent size={18} />}
+          label="Taxa de cobrança"
+          value={`${kpis.taxaCobranca}%`}
+          hint="Receita vs. esperado"
+          accent="warning"
         />
       </div>
 
       {/* Gráficos */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-        <Card className="lg:col-span-3">
-          <div className="border-b border-border px-5 py-4">
-            <h3 className="text-base font-semibold text-text">
-              Arrecadação diária (últimos 30 dias)
-            </h3>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <Card className="p-5 xl:col-span-2">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-text">
+                Evolução da receita
+              </h2>
+              <p className="text-xs text-text-muted">
+                {serieDiaria.length} dia(s) ·{" "}
+                {mercado || "todos os mercados"}
+              </p>
+            </div>
+            <Badge variant={tendencia >= 0 ? "success" : "danger"}>
+              {tendencia >= 0 ? "+" : ""}
+              {tendencia}%
+            </Badge>
           </div>
-          <div className="p-4">
-            <LineChart data={ARRECADACAO_DIARIA} />
-          </div>
+          {serieDiaria.length > 0 ? (
+            <LineChart data={serieDiaria} height={240} />
+          ) : (
+            <EmptyChart />
+          )}
         </Card>
 
-        <Card className="lg:col-span-2">
-          <div className="border-b border-border px-5 py-4">
-            <h3 className="text-base font-semibold text-text">
-              Arrecadação por mercado
-            </h3>
+        <Card className="p-5">
+          <div className="mb-4">
+            <h2 className="text-sm font-semibold text-text">
+              Receita por mercado
+            </h2>
+            <p className="text-xs text-text-muted">
+              {seriePorMercado.length} mercado(s)
+            </p>
           </div>
-          <div className="p-5">
-            <HBars items={ARRECADACAO_POR_MERCADO} />
-          </div>
-        </Card>
-      </div>
-
-      {/* Tabela fiscais + métodos */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card>
-          <div className="border-b border-border px-5 py-4">
-            <h3 className="text-base font-semibold text-text">
-              Desempenho por fiscal
-            </h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-text-muted">
-                  <th className="px-5 py-3">Fiscal</th>
-                  <th className="px-5 py-3">Mercado</th>
-                  <th className="px-5 py-3 text-right">Senhas</th>
-                  <th className="px-5 py-3 text-right">Cobrado</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {DESEMPENHO_FISCAIS.map((f) => (
-                  <tr key={f.fiscal} className="h-13 hover:bg-slate-50/60">
-                    <td className="px-5 py-3 font-medium text-text">{f.fiscal}</td>
-                    <td className="px-5 py-3 text-text-muted">{f.mercado}</td>
-                    <td className="px-5 py-3 text-right text-text">{f.senhas}</td>
-                    <td className="px-5 py-3 text-right font-medium text-text">
-                      {formatMT(f.total)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="border-b border-border px-5 py-4">
-            <h3 className="text-base font-semibold text-text">
-              Por método de pagamento
-            </h3>
-          </div>
-          <div className="p-5">
-            <HBars items={METODOS_PAGAMENTO} labelKey="metodo" />
-          </div>
+          {seriePorMercado.length > 0 ? (
+            <BarChart data={seriePorMercado} height={240} />
+          ) : (
+            <EmptyChart />
+          )}
         </Card>
       </div>
 
-      {/* Pagamentos em numerário pendentes */}
-      <Card>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-4">
-          <div className="flex items-center gap-2">
-            <AlertCircle size={18} className="text-warning" />
-            <h3 className="text-base font-semibold text-text">
-              Pagamentos em numerário a aguardar validação do gestor
-            </h3>
+      {/* Comerciantes recentes */}
+      <Card className="overflow-hidden p-0">
+        <div className="flex items-center justify-between border-b border-border px-5 py-3">
+          <div>
+            <h2 className="text-sm font-semibold text-text">
+              Comerciantes recentes
+            </h2>
+            <p className="text-xs text-text-muted">
+              Últimos registos{" "}
+              {mercado ? `em ${mercado}` : "em todos os mercados"}
+            </p>
           </div>
-          <Badge variant="warning">{pendentes.length} pendentes</Badge>
+          <Link
+            to="/comerciantes"
+            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+          >
+            Ver todos <ArrowRight size={14} />
+          </Link>
         </div>
 
-        {pendentes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 px-5 py-10 text-center">
-            <CheckCircle2 size={24} className="text-success" />
-            <p className="text-sm text-text">Nenhum pagamento pendente de validação.</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-text-muted">
-                  <th className="px-5 py-3">Recibo</th>
-                  <th className="px-5 py-3">Comerciante</th>
-                  <th className="px-5 py-3">Mercado</th>
-                  <th className="px-5 py-3">Fiscal</th>
-                  <th className="px-5 py-3">Data e hora</th>
-                  <th className="px-5 py-3 text-right">Valor</th>
-                  <th className="px-5 py-3 text-right">Acção</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {pendentes.map((p) => (
-                  <tr key={p.id} className="h-13 hover:bg-slate-50/60">
-                    <td className="px-5 py-3 font-mono text-xs text-text">{p.recibo}</td>
-                    <td className="px-5 py-3 text-text">{p.comerciante}</td>
-                    <td className="px-5 py-3 text-text-muted">{p.mercado}</td>
-                    <td className="px-5 py-3 text-text-muted">{p.fiscal}</td>
-                    <td className="px-5 py-3 text-text-muted">{formatDateTime(p.data)}</td>
-                    <td className="px-5 py-3 text-right font-medium text-text">
-                      {formatMT(p.valor)}
-                    </td>
-                    <td className="px-5 py-3 text-right">
-                      <Button size="md" onClick={() => validar(p.id)}>
-                        Validar
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <Table>
+          <THead>
+            <TH>Nome</TH>
+            <TH>Mercado</TH>
+            <TH>Produto</TH>
+            <TH>Estado</TH>
+            <TH className="text-right">Registado em</TH>
+          </THead>
+          <TBody>
+            {comerciantesFiltrados.map((c) => (
+              <TR key={c.id}>
+                <TD className="font-medium text-text">{c.nome}</TD>
+                <TD className="text-text-muted">{c.mercado}</TD>
+                <TD className="text-text-muted">{c.produto}</TD>
+                <TD>
+                  <Badge variant={estadoVariants[c.estado]}>{c.estado}</Badge>
+                </TD>
+                <TD className="text-right text-text-muted">
+                  {formatarData(c.criadoEm)}
+                </TD>
+              </TR>
+            ))}
+            {comerciantesFiltrados.length === 0 && (
+              <TR>
+                <TD className="py-8 text-center text-sm text-text-muted">
+                  Sem comerciantes para o mercado seleccionado.
+                </TD>
+              </TR>
+            )}
+          </TBody>
+        </Table>
       </Card>
     </div>
   );
+}
+
+/* ---------- Subcomponentes ---------- */
+
+function KpiCard({ icon, label, value, hint, accent = "primary" }) {
+  const accents = {
+    primary: "bg-primary/10 text-primary",
+    info: "bg-sky-100 text-sky-700",
+    success: "bg-emerald-100 text-emerald-700",
+    warning: "bg-amber-100 text-amber-700",
+  };
+  return (
+    <Card className="p-5">
+      <div className="flex items-start justify-between">
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
+            {label}
+          </p>
+          <p className="mt-2 truncate text-2xl font-semibold text-text">
+            {value}
+          </p>
+          <p className="mt-1 text-xs text-text-muted">{hint}</p>
+        </div>
+        <div className={`shrink-0 rounded-lg p-2 ${accents[accent]}`}>{icon}</div>
+      </div>
+    </Card>
+  );
+}
+
+function EmptyChart() {
+  return (
+    <div className="flex h-[240px] items-center justify-center rounded-lg border border-dashed border-border bg-slate-50/50 text-sm text-text-muted">
+      Sem dados para o filtro seleccionado
+    </div>
+  );
+}
+
+function formatarData(iso) {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
 }

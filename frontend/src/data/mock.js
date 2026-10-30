@@ -1070,3 +1070,53 @@ export const CONFIGURACOES = {
     bloquearAposTentativas: true,
   },
 };
+
+// Dashboard — transacções granulares dos últimos 30 dias
+// Cada entrada tem data, mercado, valor, estado.
+export const DASHBOARD_TRANSACOES = (() => {
+  const mercados = [
+    { nome: "Mercado do Maquinino", base: 3200 },
+    { nome: "Mercado do Goto", base: 2400 },
+    { nome: "Mercado do Chota", base: 1500 },
+    { nome: "Mercado da Manga", base: 1100 },
+    { nome: "Mercado do Carrupeia", base: 700 },
+  ];
+
+  const out = [];
+  const hoje = new Date("2026-06-14T12:00:00");
+  let id = 1;
+
+  for (let d = 29; d >= 0; d--) {
+    const data = new Date(hoje);
+    data.setDate(hoje.getDate() - d);
+    const iso = data.toISOString().slice(0, 10);
+
+    mercados.forEach((m, idx) => {
+      // Variação pseudo-aleatória determinística por dia+mercado
+      const seed = (d + 1) * (idx + 3);
+      const variacao = ((seed * 9301 + 49297) % 233280) / 233280; // 0..1
+      const fator = 0.7 + variacao * 0.7; // 0.7..1.4
+      const receita = Math.round((m.base / 5) * fator * 100) / 100;
+      const transacoes = Math.round(8 + variacao * 14);
+
+      out.push({
+        id: `TRX-${String(id++).padStart(5, "0")}`,
+        data: iso,
+        mercado: m.nome,
+        receita,
+        transacoes,
+        comerciantes: Math.round(transacoes * 0.9),
+      });
+    });
+  }
+  return out;
+})();
+
+// Dashboard — comerciantes recentes (últimos 5)
+export const COMERCIANTES_RECENTES = [
+  { id: 1, nome: "João Chirindza", mercado: "Mercado do Maquinino", produto: "Peixe", estado: "Regular", criadoEm: "2026-06-14" },
+  { id: 2, nome: "Ana Mabunda", mercado: "Mercado do Maquinino", produto: "Peixe", estado: "Em dívida", criadoEm: "2026-06-13" },
+  { id: 3, nome: "Mateus Cossa", mercado: "Mercado do Goto", produto: "Hortaliças", estado: "Regular", criadoEm: "2026-06-12" },
+  { id: 4, nome: "Salomé Macuácua", mercado: "Mercado do Maquinino", produto: "Roupa", estado: "Em dívida", criadoEm: "2026-06-11" },
+  { id: 5, nome: "Rui Mabjaia", mercado: "Mercado do Chota", produto: "Carne", estado: "Regular", criadoEm: "2026-06-10" },
+];
