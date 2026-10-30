@@ -1,17 +1,17 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Search, ChevronDown, LogOut, User } from "lucide-react";
+import { ChevronDown, LogOut, User } from "lucide-react";
 import useAuth from "../../context/useAuth";
 import { navItems } from "./navItems";
 import useLanguage from "../../context/useLanguage";
 
 export default function Topbar() {
   const { user, logout } = useAuth();
-  const isAdmin = user?.role === "Administrador";
   const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
   const menuRef = useRef(null);
 
   const current = t(
@@ -30,35 +30,22 @@ export default function Topbar() {
   }, []);
 
   async function handleLogout() {
+    setLogoutError("");
     try {
       await logout();
       navigate("/login", { replace: true });
     } catch (error) {
-      alert(error.message);
+      setLogoutError(error.message);
     }
   }
 
   return (
     <header className="fixed left-60 right-0 top-0 z-10 flex h-16 items-center gap-4 border-b border-border bg-white px-6">
-      <h2 className={`text-base font-semibold text-text ${isAdmin ? "" : "ml-auto"}`}>
+      <h2 className="text-base font-semibold text-text">
         {current}
       </h2>
 
-      {isAdmin && (
-        <div className="relative ml-auto w-72">
-          <Search
-            size={16}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
-          />
-          <input
-            type="text"
-            placeholder={t("Pesquisar…")}
-            className="h-9 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-sm text-text placeholder:text-text-muted/70 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-          />
-        </div>
-      )}
-
-      <div className="relative" ref={menuRef}>
+      <div className="relative ml-auto" ref={menuRef}>
         <button
           onClick={() => setMenuOpen((v) => !v)}
           className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50"
@@ -90,6 +77,7 @@ export default function Topbar() {
           </div>
         )}
       </div>
+      {logoutError && <p role="alert" className="text-xs text-danger">{logoutError}</p>}
     </header>
   );
 }

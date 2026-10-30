@@ -13,6 +13,7 @@ export default function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [nuit, setNuit] = useState("");
   const [marketId, setMarketId] = useState("");
   const [stallId, setStallId] = useState("");
   const [produto, setProduto] = useState("");
@@ -64,6 +65,7 @@ export default function RegisterPage() {
         name,
         email,
         phone,
+        nuit,
         password,
         marketId,
         stallId,
@@ -118,6 +120,14 @@ export default function RegisterPage() {
             value={phone}
             onChange={(event) => setPhone(event.target.value)}
           />
+          <Input
+            id="nuit"
+            label="NUIT (opcional)"
+            inputMode="numeric"
+            maxLength={9}
+            value={nuit}
+            onChange={(event) => setNuit(event.target.value.replace(/\D/g, "").slice(0, 9))}
+          />
           <Select
             id="market"
             label="Mercado"
@@ -139,7 +149,7 @@ export default function RegisterPage() {
             required
           >
             <option value="">Seleccionar mercado…</option>
-            {markets.map((option) => (
+            {markets.filter((option) => option.active).map((option) => (
               <option key={option.id} value={option.id}>{option.name}</option>
             ))}
           </Select>
@@ -152,7 +162,7 @@ export default function RegisterPage() {
             required
           >
             <option value="">Seleccionar banca…</option>
-            {(markets.find((market) => market.id === Number(marketId))?.stalls || []).map((option) => (
+            {(markets.find((market) => market.id === Number(marketId))?.stalls || []).filter((option) => !option.occupied).map((option) => (
               <option key={option.id} value={option.id}>{option.code}</option>
             ))}
           </Select>

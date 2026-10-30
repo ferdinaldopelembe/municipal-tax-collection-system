@@ -14,6 +14,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.beans.factory.annotation.Value;
 
 @Configuration
 public class InitialData {
@@ -43,7 +44,9 @@ public class InitialData {
         StallRepository stalls,
         RateRepository rates,
         AccountRepository accounts,
-        PasswordEncoder passwordEncoder
+        PasswordEncoder passwordEncoder,
+        @Value("${app.admin.email}") String adminEmail,
+        @Value("${app.admin.password}") String adminPassword
     ) {
         return args -> {
             for (String[] seed : MARKET_SEEDS) {
@@ -75,12 +78,17 @@ public class InitialData {
             }
             }
 
-            if (!accounts.existsByEmailIgnoreCase("admin@beira.gov.mz")) {
+            if (!accounts.existsByEmailIgnoreCase(adminEmail)) {
+                if (adminPassword == null || adminPassword.length() < 12) {
+                    throw new IllegalStateException(
+                        "Defina COBRANCA_ADMIN_PASSWORD com pelo menos 12 caracteres para criar a conta administrativa."
+                    );
+                }
                 accounts.save(new Account(
                     "Administrador",
-                    "admin@beira.gov.mz",
-                    "+258 84 123 4567",
-                    passwordEncoder.encode("admin123"),
+                    adminEmail,
+                    null,
+                    passwordEncoder.encode(adminPassword),
                     "ADMIN",
                     null,
                     null,

@@ -16,7 +16,7 @@ export const navItems = [
   { to: "/mercados", label: "Mercados", icon: Store },
   { to: "/comerciantes", label: "Comerciantes", icon: Users },
   { to: "/taxas", label: "Taxas", icon: Receipt },
-  { to: "/senhas", label: "Senhas", icon: Ticket },
+  { to: "/senhas", label: "Recibos", icon: Ticket },
   { to: "/pagamentos", label: "Pagamentos", icon: CreditCard },
   { to: "/fiscais", label: "Fiscais", icon: ShieldCheck },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3 },

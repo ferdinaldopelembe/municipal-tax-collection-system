@@ -1,309 +1,84 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  Plus,
-  Search,
-  Eye,
-  Receipt,
-  Printer,
-  Ban,
-} from "lucide-react";
+import { Plus, Search, Printer } from "lucide-react";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
-import Tooltip from "../../components/ui/Tooltip";
-import {
-  Table,
-  THead,
-  TH,
-  TBody,
-  TR,
-  TD,
-} from "../../components/ui/Table";
+import { Table, THead, TH, TBody, TR, TD } from "../../components/ui/Table";
 import Pagination from "../../components/ui/Pagination";
 import useAuth from "../../context/useAuth";
 import ComerciantePagamentosPage from "./ComerciantePagamentosPage";
 import { exportReceiptPdf } from "../../utils/exportReceiptPdf";
 import { api } from "../../lib/api";
 import { mapApiPayment } from "./paymentView";
-import { getStoredPayments } from "./paymentStorage";
+import { formatMT } from "../../lib/format";
 
 const PAGE_SIZE = 8;
 
-const estadoVariants = {
-  Pago: "success",
-  Pendente: "warning",
-  "Em atraso": "danger",
-  Anulado: "neutral",
-};
-
-const fmtMT = (v) =>
-  v.toLocaleString("pt-MZ", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }) + " MT";
-
 export default function PagamentosPage() {
   const { user } = useAuth();
-  return user?.role === "Administrador"
-    ? <AdminPagamentosPage />
-    : <ComerciantePagamentosPage />;
+  return user?.role === "Administrador" ? <AdminPagamentosPage /> : <ComerciantePagamentosPage />;
 }
 
 function AdminPagamentosPage() {
-  const [pagamentos, setPagamentos] = useState([]);
-  const [mercados, setMercados] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [markets, setMarkets] = useState([]);
+  const [search, setSearch] = useState("");
+  const [marketFilter, setMarketFilter] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [pesquisa, setPesquisa] = useState("");
-  const [mercado, setMercado] = useState("");
-  const [estado, setEstado] = useState("");
-  const [periodo, setPeriodo] = useState("");
-  const [page, setPage] = useState(1);
 
   useEffect(() => {
     let active = true;
-    Promise.all([api("/payments"), api("/catalog/markets")])
-      .then(([payments, marketItems]) => {
+    Promise.all([api("/payments"), api("/admin/markets")])
+      .then(([items, marketItems]) => {
         if (!active) return;
-        setPagamentos([
-          ...payments.map(mapApiPayment),
-          ...getStoredPayments(),
-        ]);
-        setMercados(marketItems);
+        setPayments(items.map(mapApiPayment));
+        setMarkets(marketItems);
       })
-      .catch((requestError) => {
-        if (active) setError(requestError.message);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
+      .catch((requestError) => { if (active) setError(requestError.message); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, []);
 
-  const filtrados = useMemo(() => {
-    const q = pesquisa.trim().toLowerCase();
-    return pagamentos.filter((p) => {
-      const matchQ =
-        !q ||
-        p.senha.toLowerCase().includes(q) ||
-        p.comerciante.toLowerCase().includes(q) ||
-        p.banca.toLowerCase().includes(q);
-      const matchMercado = !mercado || p.mercado === mercado;
-      const matchEstado = !estado || p.estado === estado;
-      const matchPeriodo = !periodo || p.periodo.includes(periodo);
-      return matchQ && matchMercado && matchEstado && matchPeriodo;
+  const filtered = useMemo(() => {
+    const text = search.trim().toLowerCase();
+    return payments.filter((payment) => {
+      const date = payment.paidAt?.slice(0, 10) || "";
+      return (!text || payment.senha.toLowerCase().includes(text)
+        || payment.comerciante.toLowerCase().includes(text)
+        || payment.banca.toLowerCase().includes(text))
+        && (!marketFilter || payment.marketId === Number(marketFilter))
+        && (!from || date >= from)
+        && (!to || date <= to);
     });
-  }, [pagamentos, pesquisa, mercado, estado, periodo]);
-
-  const totalPages = Math.max(1, Math.ceil(filtrados.length / PAGE_SIZE));
-  const pageItems = filtrados.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  function resetPage(fn) {
-    return (e) => {
-      fn(e.target.value);
-      setPage(1);
-    };
-  }
-
-  // Totais rápidos para os cards
-  const totalRecebido = pagamentos
-    .filter((p) => p.estado === "Pago")
-    .reduce((s, p) => s + p.valor, 0);
-  const totalPendente = pagamentos
-    .filter((p) => p.estado === "Pendente")
-    .reduce((s, p) => s + p.valor, 0);
-  const totalAtraso = pagamentos
-    .filter((p) => p.estado === "Em atraso")
-    .reduce((s, p) => s + p.valor, 0);
+  }, [payments, search, marketFilter, from, to]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const items = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const total = payments.reduce((sum, payment) => sum + Number(payment.valor), 0);
 
   return (
     <div className="space-y-6">
-      {/* Cabeçalho */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-text">Pagamentos</h1>
-          <p className="mt-1 text-sm text-text-muted">
-            Histórico de pagamentos de taxas nos mercados informais.
-          </p>
-        </div>
-        <Link to="/pagamentos/novo">
-          <Button>
-            <Plus size={16} />
-            Registar pagamento
-          </Button>
-        </Link>
-      </div>
-
-      {/* Cards de resumo */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Card className="p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
-            Recebido
-          </p>
-          <p className="mt-2 text-xl font-semibold text-emerald-600">
-            {fmtMT(totalRecebido)}
-          </p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
-            Pendente
-          </p>
-          <p className="mt-2 text-xl font-semibold text-amber-600">
-            {fmtMT(totalPendente)}
-          </p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
-            Em atraso
-          </p>
-          <p className="mt-2 text-xl font-semibold text-red-600">
-            {fmtMT(totalAtraso)}
-          </p>
-        </Card>
-      </div>
-
-      {/* Filtros */}
+      <div className="flex flex-wrap items-center justify-between gap-4"><div><h1 className="text-2xl font-semibold">Pagamentos</h1><p className="mt-1 text-sm text-text-muted">Visão geral dos pagamentos confirmados em todos os mercados.</p></div><Link to="/pagamentos/novo"><Button><Plus size={16} /> Registar pagamento</Button></Link></div>
+      <div className="grid gap-4 sm:grid-cols-2"><Card className="p-4"><p className="text-xs font-medium uppercase text-text-muted">Total recebido</p><p className="mt-2 text-xl font-semibold text-success">{formatMT(total)}</p></Card><Card className="p-4"><p className="text-xs font-medium uppercase text-text-muted">Pagamentos confirmados</p><p className="mt-2 text-xl font-semibold">{payments.length}</p></Card></div>
       <Card className="flex flex-wrap items-center gap-3 p-4">
-        <div className="relative w-full max-w-sm">
-          <Search
-            size={16}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
-          />
-          <input
-            type="text"
-            placeholder="Pesquisar por senha, comerciante ou banca…"
-            value={pesquisa}
-            onChange={resetPage(setPesquisa)}
-            className="h-10 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-sm text-text placeholder:text-text-muted/70 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-          />
-        </div>
-
-        <select
-          value={mercado}
-          onChange={resetPage(setMercado)}
-          className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-        >
-          <option value="">Todos os mercados</option>
-          {mercados.map((market) => (
-          <option key={market.id} value={market.name}>
-            {market.name}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={estado}
-          onChange={resetPage(setEstado)}
-          className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-        >
-          <option value="">Todos os estados</option>
-          <option value="Pago">Pago</option>
-          <option value="Pendente">Pendente</option>
-          <option value="Em atraso">Em atraso</option>
-          <option value="Anulado">Anulado</option>
-        </select>
-
-        <input
-          type="text"
-          placeholder="Período (ex.: 18/10/2025)"
-          value={periodo}
-          onChange={resetPage(setPeriodo)}
-          className="h-10 w-56 rounded-lg border border-border bg-white px-3 text-sm text-text placeholder:text-text-muted/70 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-        />
+        <div className="relative w-full max-w-sm"><Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Pesquisar referência, comerciante ou banca…" className="h-10 w-full rounded-lg border border-border pl-9 pr-3 text-sm" /></div>
+        <select value={marketFilter} onChange={(event) => { setMarketFilter(event.target.value); setPage(1); }} className="h-10 rounded-lg border border-border bg-white px-3 text-sm"><option value="">Todos os mercados</option>{markets.map((market) => <option key={market.id} value={market.id}>{market.name}</option>)}</select>
+        <label className="text-xs text-text-muted">De <input type="date" value={from} max={to || undefined} onChange={(event) => setFrom(event.target.value)} className="ml-1 h-10 rounded-lg border border-border px-2 text-sm text-text" /></label>
+        <label className="text-xs text-text-muted">Até <input type="date" value={to} min={from || undefined} onChange={(event) => setTo(event.target.value)} className="ml-1 h-10 rounded-lg border border-border px-2 text-sm text-text" /></label>
       </Card>
-
-      {/* Tabela */}
-      <Card className="overflow-hidden p-0">
-        {error && <p className="p-4 text-sm text-danger">{error}</p>}
-        {loading && <p className="p-4 text-sm text-text-muted">A carregar pagamentos…</p>}
-        <Table>
-          <THead>
-            <TH>Senha</TH>
-            <TH>Comerciante</TH>
-            <TH>Mercado / Banca</TH>
-            <TH>Taxa</TH>
-            <TH>Período</TH>
-            <TH>Método</TH>
-            <TH className="text-right">Valor</TH>
-            <TH>Data</TH>
-            <TH>Estado</TH>
-            <TH className="text-right">Acções</TH>
-          </THead>
-          <TBody>
-            {pageItems.map((p) => (
-              <TR key={p.id}>
-                <TD className="font-mono text-xs text-text">{p.senha}</TD>
-                <TD className="font-medium text-text">{p.comerciante}</TD>
-                <TD className="text-text">
-                  <span className="block text-sm">{p.mercado}</span>
-                  <span className="font-mono text-xs text-text-muted">
-                    {p.banca}
-                  </span>
-                </TD>
-                <TD className="text-text">{p.taxa}</TD>
-                <TD className="text-text-muted">{p.periodo}</TD>
-                <TD className="text-text">{p.metodo}</TD>
-                <TD className="text-right font-medium text-text">
-                  {fmtMT(p.valor)}
-                </TD>
-                <TD className="text-text-muted">{p.data}</TD>
-                <TD>
-                  <Tooltip content={p.motivo || ""}>
-                    <Badge variant={estadoVariants[p.estado]}>{p.estado}</Badge>
-                  </Tooltip>
-                </TD>
-                <TD className="text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <button
-                      className="rounded-md p-1.5 text-text-muted hover:bg-slate-100 hover:text-text"
-                      title="Ver detalhe"
-                      onClick={() => alert(`Detalhe ${p.senha} (mock).`)}
-                    >
-                      <Eye size={16} />
-                    </button>
-                    <button
-                      className="rounded-md p-1.5 text-text-muted hover:bg-slate-100 hover:text-text disabled:opacity-40"
-                      title="Ver senha"
-                      onClick={() => alert(`Senha ${p.senha} (mock).`)}
-                      disabled={p.estado !== "Pago"}
-                    >
-                      <Receipt size={16} />
-                    </button>
-                    <button
-                      className="rounded-md p-1.5 text-text-muted hover:bg-slate-100 hover:text-text disabled:opacity-40"
-                      title="Imprimir recibo"
-                      onClick={() => exportReceiptPdf(p)}
-                      disabled={p.estado !== "Pago"}
-                    >
-                      <Printer size={16} />
-                    </button>
-                    <button
-                      className="rounded-md p-1.5 text-text-muted hover:bg-slate-100 hover:text-red-600 disabled:opacity-40"
-                      title="Anular"
-                      onClick={() => alert(`Anular ${p.senha} (mock).`)}
-                      disabled={p.estado === "Anulado"}
-                    >
-                      <Ban size={16} />
-                    </button>
-                  </div>
-                </TD>
-              </TR>
-            ))}
-            {!loading && !error && pageItems.length === 0 && (
-              <TR>
-                <TD className="py-8 text-center text-sm text-text-muted">
-                  Nenhum pagamento encontrado.
-                </TD>
-              </TR>
-            )}
-          </TBody>
-        </Table>
-
-        <Pagination page={page} totalPages={totalPages} onChange={setPage} />
-      </Card>
+      {error && <p role="alert" className="rounded-lg border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">{error}</p>}
+      <Card className="overflow-hidden p-0"><Table>
+        <THead><TH>Referência</TH><TH>Comerciante</TH><TH>Mercado / Banca</TH><TH>Produto / Taxa</TH><TH>Período</TH><TH>Método</TH><TH className="text-right">Valor</TH><TH>Data</TH><TH>Estado</TH><TH className="text-right">Recibo</TH></THead>
+        <TBody>
+          {items.map((payment) => <TR key={payment.id}><TD className="font-mono text-xs">{payment.senha}</TD><TD className="font-medium">{payment.comerciante}</TD><TD><span className="block">{payment.mercado}</span><span className="font-mono text-xs text-text-muted">{payment.banca}</span></TD><TD>{payment.produto}</TD><TD>{payment.periodo}</TD><TD>{payment.metodo}</TD><TD className="text-right">{formatMT(payment.valor)}</TD><TD>{payment.data}</TD><TD><Badge variant="success">Pago</Badge></TD><TD className="text-right"><button onClick={() => exportReceiptPdf(payment)} title="Imprimir recibo" className="rounded-md p-1.5 text-text-muted hover:bg-slate-100"><Printer size={16} /></button></TD></TR>)}
+          {loading && <TR><TD className="py-8 text-center text-sm text-text-muted">A carregar pagamentos…</TD></TR>}
+          {!loading && items.length === 0 && <TR><TD className="py-8 text-center text-sm text-text-muted">Nenhum pagamento encontrado.</TD></TR>}
+        </TBody>
+      </Table><Pagination page={page} totalPages={totalPages} onChange={setPage} /></Card>
     </div>
   );
 }

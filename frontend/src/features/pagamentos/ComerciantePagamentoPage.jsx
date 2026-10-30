@@ -9,7 +9,7 @@ import { api, apiPost } from "../../lib/api";
 import { exportReceiptPdf } from "../../utils/exportReceiptPdf";
 import { mapApiPayment } from "./paymentView";
 
-const METHODS = ["Numerário", "M-Pesa", "e-Mola", "Mkesh"];
+const METHODS = ["Numerário"];
 
 const fmtMT = (value) =>
   Number(value).toLocaleString("pt-MZ", {

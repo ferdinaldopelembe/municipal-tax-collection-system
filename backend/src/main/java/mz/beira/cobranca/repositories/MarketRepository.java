@@ -6,4 +6,5 @@ import java.util.Optional;
 
 public interface MarketRepository extends JpaRepository<Market, Long> {
     Optional<Market> findByName(String name);
+    boolean existsByNameIgnoreCase(String name);
 }

@@ -12,7 +12,10 @@ public record AccountResponse(
     String market,
     Long stallId,
     String stall,
-    String product
+    String product,
+    String nuit,
+    String status,
+    String statusReason
 ) {
     public static AccountResponse from(Account account) {
         return new AccountResponse(
@@ -25,7 +28,10 @@ public record AccountResponse(
             account.getMarket() == null ? null : account.getMarket().getName(),
             account.getStall() == null ? null : account.getStall().getId(),
             account.getStall() == null ? null : account.getStall().getCode(),
-            account.getProduct()
+            account.getProduct(),
+            account.getNuit(),
+            account.getStatus(),
+            account.getStatusReason()
         );
     }
 }

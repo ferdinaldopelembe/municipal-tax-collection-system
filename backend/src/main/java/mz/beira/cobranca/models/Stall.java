@@ -17,6 +17,7 @@ public class Stall {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     private String code;
+    private String product;
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "market_id", nullable = false)
     private Market market;
@@ -24,11 +25,19 @@ public class Stall {
     protected Stall() {}
 
     public Stall(String code, Market market) {
+        this(code, market, null);
+    }
+
+    public Stall(String code, Market market, String product) {
         this.code = code;
         this.market = market;
+        this.product = product;
     }
 
     public Long getId() { return id; }
     public String getCode() { return code; }
     public Market getMarket() { return market; }
+    public String getProduct() { return product; }
+
+    public void setProduct(String product) { this.product = product; }
 }

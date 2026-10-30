@@ -14,7 +14,7 @@ const translations = {
   "Mercados": "Markets",
   "Comerciantes": "Traders",
   "Taxas": "Fees",
-  "Senhas": "Tickets",
+  "Recibos": "Receipts",
   "Pagamentos": "Payments",
   "Fiscais": "Inspectors",
   "Relatórios": "Reports",
@@ -108,8 +108,6 @@ const translations = {
   "Impede novos logins até desbloqueio manual pelo administrador.":
     "Prevents new logins until an administrator manually unlocks the account.",
   "Autenticação de dois fatores (2FA)": "Two-factor authentication (2FA)",
-  "Requer código temporário no login (mock).":
-    "Requires a temporary code at login (mock).",
 };
 
 export default function LanguageProvider({ children }) {

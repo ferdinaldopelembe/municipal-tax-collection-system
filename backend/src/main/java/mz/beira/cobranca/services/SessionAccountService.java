@@ -20,6 +20,19 @@ public class SessionAccountService {
         if (!(accountId instanceof Long id)) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Inicie sessão para continuar.");
         }
-        return accounts.findById(id);
+        Account account = accounts.findById(id);
+        if ("Bloqueado".equals(account.getStatus())) {
+            session.invalidate();
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "A conta está bloqueada. Contacte a administração.");
+        }
+        return account;
+    }
+
+    public Account getAdministrator(HttpSession session) {
+        Account account = getAccount(session);
+        if (!"ADMIN".equals(account.getRole())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Acesso reservado à administração.");
+        }
+        return account;
     }
 }

@@ -12,5 +12,6 @@ public record RegisterRequest(
     @NotBlank @Size(min = 6) String password,
     @NotNull Long marketId,
     @NotNull Long stallId,
-    @NotBlank String product
+    @NotBlank String product,
+    String nuit
 ) {}

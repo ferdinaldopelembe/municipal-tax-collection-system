@@ -1,316 +1,84 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  Plus,
-  Search,
-  Eye,
-  Printer,
-  CreditCard,
-  XCircle,
-} from "lucide-react";
+import { Plus, Search, Printer } from "lucide-react";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
-import {
-  Table,
-  THead,
-  TH,
-  TBody,
-  TR,
-  TD,
-} from "../../components/ui/Table";
+import { Table, THead, TH, TBody, TR, TD } from "../../components/ui/Table";
 import Pagination from "../../components/ui/Pagination";
-import { SENHAS, MERCADOS, TIPOS_TAXA } from "../../data/mock";
+import { api } from "../../lib/api";
+import { exportReceiptPdf } from "../../utils/exportReceiptPdf";
+import { formatMT } from "../../lib/format";
 
 const PAGE_SIZE = 8;
-const HOJE = "2024-10-30";
 
-const estadoVariants = {
-  Paga: "success",
-  Pendente: "info",
-  Vencida: "danger",
-  Anulada: "neutral",
-};
-
-function formatMT(n) {
-  const s = n.toFixed(2).replace(".", ",");
-  const [int, dec] = s.split(",");
-  return `${int.replace(/\B(?=(\d{3})+(?!\d))/g, ".")},${dec} MT`;
+function toReceipt(ticket) {
+  const date = ticket.dataEmissao ? new Date(ticket.dataEmissao).toLocaleString("pt-MZ") : "—";
+  const period = ticket.periodoInicio === ticket.periodoFim
+    ? new Date(`${ticket.periodoInicio}T00:00:00`).toLocaleDateString("pt-MZ")
+    : `${ticket.periodoInicio} – ${ticket.periodoFim}`;
+  return {
+    senha: ticket.numero,
+    referencia: ticket.numero,
+    comerciante: ticket.comerciante,
+    mercado: ticket.mercado,
+    banca: ticket.banca,
+    tipo: ticket.tipoTaxa,
+    periodo: period,
+    metodo: ticket.metodoPagamento,
+    valor: Number(ticket.valor),
+    data: date,
+  };
 }
 
 export default function SenhasPage() {
-  const [senhas, setSenhas] = useState(SENHAS);
-  const [pesquisa, setPesquisa] = useState("");
-  const [mercado, setMercado] = useState("");
-  const [tipo, setTipo] = useState("");
-  const [estado, setEstado] = useState("");
+  const [tickets, setTickets] = useState([]);
+  const [markets, setMarkets] = useState([]);
+  const [search, setSearch] = useState("");
+  const [marketFilter, setMarketFilter] = useState("");
   const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const stats = useMemo(() => {
-    const emitidasHoje = senhas.filter((s) => s.dataEmissao === HOJE).length;
-    const recebidoHoje = senhas
-      .filter((s) => s.estado === "Paga" && s.dataPagamento === HOJE)
-      .reduce((sum, s) => sum + s.valor, 0);
-    const pendentes = senhas.filter((s) => s.estado === "Pendente").length;
-    const vencidas = senhas.filter((s) => s.estado === "Vencida").length;
-    return { emitidasHoje, recebidoHoje, pendentes, vencidas };
-  }, [senhas]);
+  useEffect(() => {
+    let active = true;
+    Promise.all([api("/admin/tickets"), api("/admin/markets")])
+      .then(([ticketItems, marketItems]) => {
+        if (!active) return;
+        setTickets(ticketItems);
+        setMarkets(marketItems);
+      })
+      .catch((requestError) => { if (active) setError(requestError.message); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
 
-  const filtrados = useMemo(() => {
-    const q = pesquisa.trim().toLowerCase();
-    return senhas.filter((s) => {
-      const matchQ =
-        !q ||
-        s.numero.toLowerCase().includes(q) ||
-        s.comerciante.toLowerCase().includes(q) ||
-        s.nuit.includes(q);
-      const matchMercado = !mercado || s.mercado === mercado;
-      const matchTipo = !tipo || s.tipoTaxa === tipo;
-      const matchEstado = !estado || s.estado === estado;
-      return matchQ && matchMercado && matchTipo && matchEstado;
-    });
-  }, [senhas, pesquisa, mercado, tipo, estado]);
-
-  const totalPages = Math.max(1, Math.ceil(filtrados.length / PAGE_SIZE));
-  const pageItems = filtrados.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  function resetPage(fn) {
-    return (e) => {
-      fn(e.target.value);
-      setPage(1);
-    };
-  }
-
-  function registarPagamento(s) {
-    setSenhas((prev) =>
-      prev.map((x) =>
-        x.id === s.id
-          ? {
-              ...x,
-              estado: "Paga",
-              metodoPagamento: "M-Pesa",
-              dataPagamento: HOJE,
-            }
-          : x
-      )
-    );
-  }
-
-  function anularSenha(s) {
-    if (!window.confirm(`Anular a senha ${s.numero} de ${s.comerciante}?`)) return;
-    setSenhas((prev) =>
-      prev.map((x) => (x.id === s.id ? { ...x, estado: "Anulada" } : x))
-    );
-  }
+  const filtered = useMemo(() => {
+    const text = search.trim().toLowerCase();
+    return tickets.filter((ticket) => (
+      (!text || ticket.numero.toLowerCase().includes(text)
+        || ticket.comerciante.toLowerCase().includes(text)
+        || (ticket.nuit || "").includes(text))
+      && (!marketFilter || ticket.mercado === marketFilter)
+    ));
+  }, [tickets, search, marketFilter]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const items = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const today = new Date().toISOString().slice(0, 10);
+  const receivedToday = tickets.filter((ticket) => ticket.dataEmissao?.slice(0, 10) === today)
+    .reduce((sum, ticket) => sum + Number(ticket.valor), 0);
 
   return (
     <div className="space-y-6">
-      {/* Cabeçalho */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-text">Senhas</h1>
-          <p className="mt-1 text-sm text-text-muted">
-            Gestão das senhas de pagamento de taxas dos mercados informais.
-          </p>
-        </div>
-        <Link to="/senhas/nova">
-          <Button>
-            <Plus size={16} />
-            Emitir senha
-          </Button>
-        </Link>
-      </div>
-
-      {/* KPIs de resumo */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Card className="p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
-            Emitidas hoje
-          </p>
-          <p className="mt-1 text-2xl font-semibold text-text">
-            {stats.emitidasHoje}
-          </p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
-            Recebido hoje
-          </p>
-          <p className="mt-1 text-2xl font-semibold text-success">
-            {formatMT(stats.recebidoHoje)}
-          </p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
-            Pendentes
-          </p>
-          <p className="mt-1 text-2xl font-semibold text-text">
-            {stats.pendentes}
-          </p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
-            Vencidas
-          </p>
-          <p className="mt-1 text-2xl font-semibold text-danger">
-            {stats.vencidas}
-          </p>
-        </Card>
-      </div>
-
-      {/* Filtros */}
-      <Card className="flex flex-wrap items-center gap-3 p-4">
-        <div className="relative w-full max-w-sm">
-          <Search
-            size={16}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
-          />
-          <input
-            type="text"
-            placeholder="Pesquisar por Nº senha, comerciante ou NUIT…"
-            value={pesquisa}
-            onChange={resetPage(setPesquisa)}
-            className="h-10 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-sm text-text placeholder:text-text-muted/70 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-          />
-        </div>
-
-        <select
-          value={mercado}
-          onChange={resetPage(setMercado)}
-          className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-        >
-          <option value="">Todos os mercados</option>
-          {MERCADOS.map((m) => (
-            <option key={m.id} value={m.nome}>
-              {m.nome}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={tipo}
-          onChange={resetPage(setTipo)}
-          className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-        >
-          <option value="">Todos os tipos</option>
-          {TIPOS_TAXA.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={estado}
-          onChange={resetPage(setEstado)}
-          className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-        >
-          <option value="">Todos os estados</option>
-          <option value="Paga">Paga</option>
-          <option value="Pendente">Pendente</option>
-          <option value="Vencida">Vencida</option>
-          <option value="Anulada">Anulada</option>
-        </select>
-      </Card>
-
-      {/* Tabela */}
-      <Card className="overflow-hidden p-0">
-        <Table>
-          <THead>
-            <TH>Nº Senha</TH>
-            <TH>Comerciante</TH>
-            <TH>Mercado / Banca</TH>
-            <TH>Período</TH>
-            <TH>Valor</TH>
-            <TH>Estado</TH>
-            <TH>Vencimento</TH>
-            <TH className="text-right">Acções</TH>
-          </THead>
-          <TBody>
-            {pageItems.map((s) => (
-              <TR key={s.id}>
-                <TD className="font-mono text-xs font-medium text-text">
-                  {s.numero}
-                </TD>
-                <TD className="text-text">
-                  <span className="block text-sm font-medium">
-                    {s.comerciante}
-                  </span>
-                  <span className="font-mono text-xs text-text-muted">
-                    NUIT {s.nuit}
-                  </span>
-                </TD>
-                <TD className="text-text">
-                  <span className="block text-sm">{s.mercado}</span>
-                  <span className="font-mono text-xs text-text-muted">
-                    {s.banca}
-                  </span>
-                </TD>
-                <TD>
-                  <span className="block text-sm text-text">{s.periodo}</span>
-                  <span className="text-xs text-text-muted">{s.tipoTaxa}</span>
-                </TD>
-                <TD className="font-medium text-text">{formatMT(s.valor)}</TD>
-                <TD>
-                  <Badge variant={estadoVariants[s.estado]}>{s.estado}</Badge>
-                </TD>
-                <TD className="text-text-muted">{s.dataVencimento}</TD>
-                <TD className="text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <button
-                      className="rounded-md p-1.5 text-text-muted hover:bg-slate-100 hover:text-text"
-                      title="Ver"
-                      onClick={() => alert(`Ver senha ${s.numero} (mock).`)}
-                    >
-                      <Eye size={16} />
-                    </button>
-
-                    {s.estado !== "Anulada" && (
-                      <button
-                        className="rounded-md p-1.5 text-text-muted hover:bg-slate-100 hover:text-text"
-                        title="Imprimir"
-                        onClick={() =>
-                          alert(`Imprimir senha ${s.numero} (mock).`)
-                        }
-                      >
-                        <Printer size={16} />
-                      </button>
-                    )}
-
-                    {(s.estado === "Pendente" || s.estado === "Vencida") && (
-                      <button
-                        className="rounded-md p-1.5 text-text-muted hover:bg-slate-100 hover:text-text"
-                        title="Registar pagamento"
-                        onClick={() => registarPagamento(s)}
-                      >
-                        <CreditCard size={16} />
-                      </button>
-                    )}
-
-                    {(s.estado === "Pendente" || s.estado === "Vencida") && (
-                      <button
-                        className="rounded-md p-1.5 text-text-muted hover:bg-slate-100 hover:text-danger"
-                        title="Anular"
-                        onClick={() => anularSenha(s)}
-                      >
-                        <XCircle size={16} />
-                      </button>
-                    )}
-                  </div>
-                </TD>
-              </TR>
-            ))}
-            {pageItems.length === 0 && (
-              <TR>
-                <TD className="py-8 text-center text-sm text-text-muted">
-                  Nenhuma senha encontrada.
-                </TD>
-              </TR>
-            )}
-          </TBody>
-        </Table>
-
-        <Pagination page={page} totalPages={totalPages} onChange={setPage} />
-      </Card>
+      <div className="flex flex-wrap items-center justify-between gap-4"><div><h1 className="text-2xl font-semibold">Recibos</h1><p className="mt-1 text-sm text-text-muted">Recibos emitidos a partir de pagamentos confirmados.</p></div><Link to="/pagamentos/novo"><Button><Plus size={16} /> Registar pagamento</Button></Link></div>
+      <div className="grid gap-4 sm:grid-cols-2"><Card className="p-4"><p className="text-xs font-medium uppercase text-text-muted">Pagamentos registados</p><p className="mt-1 text-2xl font-semibold">{tickets.length}</p></Card><Card className="p-4"><p className="text-xs font-medium uppercase text-text-muted">Recebido hoje</p><p className="mt-1 text-2xl font-semibold text-success">{formatMT(receivedToday)}</p></Card></div>
+      <Card className="flex flex-wrap items-center gap-3 p-4"><div className="relative w-full max-w-sm"><Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Pesquisar referência, comerciante ou NUIT…" className="h-10 w-full rounded-lg border border-border pl-9 pr-3 text-sm" /></div><select value={marketFilter} onChange={(event) => { setMarketFilter(event.target.value); setPage(1); }} className="h-10 rounded-lg border border-border bg-white px-3 text-sm"><option value="">Todos os mercados</option>{markets.map((market) => <option key={market.id}>{market.name}</option>)}</select></Card>
+      {error && <p role="alert" className="rounded-lg border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">{error}</p>}
+      <Card className="overflow-hidden p-0"><Table><THead><TH>Referência</TH><TH>Comerciante</TH><TH>Mercado / Banca</TH><TH>Período</TH><TH>Valor</TH><TH>Estado</TH><TH className="text-right">Recibo</TH></THead><TBody>
+        {items.map((ticket) => <TR key={ticket.id}><TD className="font-mono text-xs">{ticket.numero}</TD><TD><span className="block font-medium">{ticket.comerciante}</span><span className="text-xs text-text-muted">NUIT {ticket.nuit || "—"}</span></TD><TD><span className="block">{ticket.mercado}</span><span className="font-mono text-xs text-text-muted">{ticket.banca}</span></TD><TD>{ticket.periodoInicio} – {ticket.periodoFim}<span className="block text-xs text-text-muted">{ticket.tipoTaxa}</span></TD><TD>{formatMT(Number(ticket.valor))}</TD><TD><Badge variant="success">Pago</Badge></TD><TD className="text-right"><button onClick={() => exportReceiptPdf(toReceipt(ticket))} title="Imprimir recibo" className="rounded-md p-1.5 text-text-muted hover:bg-slate-100"><Printer size={16} /></button></TD></TR>)}
+        {loading && <TR><TD className="py-8 text-center text-sm text-text-muted">A carregar recibos…</TD></TR>}
+        {!loading && items.length === 0 && <TR><TD className="py-8 text-center text-sm text-text-muted">Nenhum recibo encontrado.</TD></TR>}
+      </TBody></Table><Pagination page={page} totalPages={totalPages} onChange={setPage} /></Card>
     </div>
   );
 }

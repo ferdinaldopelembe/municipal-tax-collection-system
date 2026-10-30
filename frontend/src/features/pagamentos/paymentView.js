@@ -22,6 +22,8 @@ export function mapApiPayment(payment) {
     senha: payment.paymentReference,
     referencia: payment.transactionReference,
     ownerId: payment.ownerId,
+    marketId: payment.marketId,
+    paidAt: payment.paidAt,
     comerciante: payment.merchant,
     telefone: payment.phone,
     email: payment.email,

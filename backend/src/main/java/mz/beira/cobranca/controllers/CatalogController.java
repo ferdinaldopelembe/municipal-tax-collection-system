@@ -20,7 +20,7 @@ public class CatalogController {
 
     @GetMapping("/markets")
     public List<MarketResponse> markets() {
-        return catalog.getMarkets();
+        return catalog.getPublicMarkets();
     }
 
     @GetMapping("/rates")

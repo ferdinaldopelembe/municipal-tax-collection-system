@@ -24,6 +24,7 @@ public class Rate {
     private String periodicity;
     private BigDecimal amount;
     private boolean active;
+    private String description;
 
     protected Rate() {}
 
@@ -41,4 +42,15 @@ public class Rate {
     public String getPeriodicity() { return periodicity; }
     public BigDecimal getAmount() { return amount; }
     public boolean isActive() { return active; }
+    public String getDescription() { return description; }
+
+    public void update(Market market, String product, String periodicity, BigDecimal amount,
+                       boolean active, String description) {
+        this.market = market;
+        this.product = product;
+        this.periodicity = periodicity;
+        this.amount = amount;
+        this.active = active;
+        this.description = description;
+    }
 }

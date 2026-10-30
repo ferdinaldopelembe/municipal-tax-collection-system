@@ -47,9 +47,16 @@ public class AccountService {
         if (phone != null && accounts.existsByPhone(phone)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Este telefone já está registado.");
         }
+        String nuit = normalize(request.nuit());
+        if (nuit != null && accounts.existsByNuit(nuit)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Este NUIT já está registado.");
+        }
 
         Market market = markets.findById(request.marketId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mercado inválido."));
+        if (!market.isActive()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "O mercado seleccionado está inactivo.");
+        }
         Stall stall = stalls.findByIdAndMarketId(request.stallId(), market.getId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "A banca não pertence ao mercado seleccionado."));
         if (accounts.findByStallId(stall.getId()).isPresent()) {
@@ -60,6 +67,7 @@ public class AccountService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Não existe uma taxa activa para este produto neste mercado.");
         }
 
+        stall.setProduct(product);
         return accounts.save(new Account(
             request.name().trim(),
             email,
@@ -68,7 +76,8 @@ public class AccountService {
             "MERCHANT",
             market,
             stall,
-            product
+            product,
+            nuit
         ));
     }
 
@@ -80,6 +89,9 @@ public class AccountService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciais inválidas."));
         if (!passwordEncoder.matches(request.password(), account.getPasswordHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciais inválidas.");
+        }
+        if ("Bloqueado".equals(account.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "A conta está bloqueada. Contacte a administração.");
         }
         return account;
     }
@@ -93,6 +105,9 @@ public class AccountService {
     public Account updateBusinessProfile(Account account, BusinessProfileRequest request) {
         Market market = markets.findById(request.marketId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mercado inválido."));
+        if (!market.isActive()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "O mercado seleccionado está inactivo.");
+        }
         Stall stall = stalls.findByIdAndMarketId(request.stallId(), market.getId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "A banca não pertence ao mercado seleccionado."));
         accounts.findByStallId(stall.getId())
@@ -105,6 +120,7 @@ public class AccountService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Não existe uma taxa activa para este produto neste mercado.");
         }
         account.associateBusiness(market, stall, product);
+        stall.setProduct(product);
         return accounts.save(account);
     }
 

@@ -22,7 +22,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.ObjectMapper;
 
-@SpringBootTest
+@SpringBootTest(properties = {
+    "spring.datasource.url=jdbc:h2:mem:cobranca-test;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE",
+    "app.admin.password=admin123456789"
+})
 @AutoConfigureMockMvc
 class PaymentApiTests {
     @Autowired private MockMvc mvc;
@@ -36,6 +39,13 @@ class PaymentApiTests {
         Market market = markets.findByName("Mercado do Maquinino").orElseThrow();
         Stall firstStall = availableStall(market);
         MockHttpSession firstSession = register(market, firstStall, "first");
+        mvc.perform(get("/api/admin/markets").session(firstSession))
+            .andExpect(status().isForbidden());
+        mvc.perform(post("/api/payments")
+                .session(firstSession)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"method\":\"M-Pesa\"}"))
+            .andExpect(status().isBadRequest());
 
         mvc.perform(post("/api/payments")
                 .session(firstSession)
@@ -52,7 +62,7 @@ class PaymentApiTests {
         mvc.perform(post("/api/payments")
                 .session(secondSession)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"method\":\"M-Pesa\"}"))
+                .content("{\"method\":\"Numerário\"}"))
             .andExpect(status().isOk());
 
         mvc.perform(get("/api/payments").session(firstSession))
@@ -62,7 +72,7 @@ class PaymentApiTests {
 
         MvcResult adminLogin = mvc.perform(post("/api/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"identifier\":\"admin@beira.gov.mz\",\"password\":\"admin123\"}"))
+                .content("{\"identifier\":\"admin@beira.gov.mz\",\"password\":\"admin123456789\"}"))
             .andExpect(status().isOk())
             .andReturn();
         MockHttpSession adminSession =

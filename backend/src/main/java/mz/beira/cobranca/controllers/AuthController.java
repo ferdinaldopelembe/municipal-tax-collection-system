@@ -1,6 +1,7 @@
 package mz.beira.cobranca.controllers;
 
 import jakarta.servlet.http.HttpSession;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import mz.beira.cobranca.dto.AccountResponse;
 import mz.beira.cobranca.dto.BusinessProfileRequest;
@@ -8,6 +9,7 @@ import mz.beira.cobranca.dto.LoginRequest;
 import mz.beira.cobranca.dto.RegisterRequest;
 import mz.beira.cobranca.models.Account;
 import mz.beira.cobranca.services.AccountService;
+import mz.beira.cobranca.services.AdminService;
 import mz.beira.cobranca.services.SessionAccountService;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,25 +25,43 @@ import org.springframework.web.bind.annotation.PutMapping;
 public class AuthController {
     private final AccountService accounts;
     private final SessionAccountService sessionAccounts;
+    private final AdminService admin;
 
-    public AuthController(AccountService accounts, SessionAccountService sessionAccounts) {
+    public AuthController(
+        AccountService accounts,
+        SessionAccountService sessionAccounts,
+        AdminService admin
+    ) {
         this.accounts = accounts;
         this.sessionAccounts = sessionAccounts;
+        this.admin = admin;
     }
 
     @PostMapping("/register")
     @Transactional
-    public AccountResponse register(@Valid @RequestBody RegisterRequest request, HttpSession session) {
+    public AccountResponse register(
+        @Valid @RequestBody RegisterRequest request,
+        HttpSession session,
+        HttpServletRequest servletRequest
+    ) {
         Account account = accounts.register(request);
+        servletRequest.changeSessionId();
         session.setAttribute(SessionAccountService.ACCOUNT_SESSION_KEY, account.getId());
+        admin.audit(account, "Criação", "Conta", "Criou a conta de comerciante.", servletRequest.getRemoteAddr());
         return AccountResponse.from(account);
     }
 
     @PostMapping("/login")
     @Transactional(readOnly = true)
-    public AccountResponse login(@Valid @RequestBody LoginRequest request, HttpSession session) {
+    public AccountResponse login(
+        @Valid @RequestBody LoginRequest request,
+        HttpSession session,
+        HttpServletRequest servletRequest
+    ) {
         Account account = accounts.authenticate(request);
+        servletRequest.changeSessionId();
         session.setAttribute(SessionAccountService.ACCOUNT_SESSION_KEY, account.getId());
+        admin.audit(account, "Login", "Sessão", "Iniciou sessão no sistema.", servletRequest.getRemoteAddr());
         return AccountResponse.from(account);
     }
 
@@ -65,7 +85,12 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public void logout(HttpSession session) {
+    public void logout(HttpSession session, HttpServletRequest request) {
+        Object accountId = session.getAttribute(SessionAccountService.ACCOUNT_SESSION_KEY);
+        if (accountId instanceof Long id) {
+            Account account = accounts.findById(id);
+            admin.audit(account, "Logout", "Sessão", "Terminou a sessão.", request.getRemoteAddr());
+        }
         session.invalidate();
     }
 

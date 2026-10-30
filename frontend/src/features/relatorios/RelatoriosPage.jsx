@@ -1,510 +1,132 @@
-import { useMemo, useState } from "react";
-import {
-  Download,
-  Calendar,
-  TrendingUp,
-  Users,
-  Receipt,
-  Percent,
-} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Calendar, Download, Receipt, TrendingUp, Users } from "lucide-react";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
-import Badge from "../../components/ui/Badge";
 import BarChart from "../../components/ui/BarChart";
 import LineChart from "../../components/ui/LineChart";
-import {
-  Table,
-  THead,
-  TH,
-  TBody,
-  TR,
-  TD,
-} from "../../components/ui/Table";
+import { Table, THead, TH, TBody, TR, TD } from "../../components/ui/Table";
 import Pagination from "../../components/ui/Pagination";
-import {
-  MERCADOS,
-  TIPOS_RELATORIO,
-  RECEITA_POR_MERCADO,
-  EVOLUCAO_DIARIA,
-  TRANSACOES_RELATORIO,
-} from "../../data/mock";
+import { api } from "../../lib/api";
 import { formatMT } from "../../utils/format";
 import { exportarPdf } from "../../utils/exportPdf";
+import { mapApiPayment } from "../pagamentos/paymentView";
 
-const PAGE_SIZE = 5;
+const PAGE_SIZE = 8;
+const today = new Date();
+const defaultEnd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+const defaultStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
 
-const estadoVariants = {
-  Pago: "success",
-  "Em dívida": "warning",
-  Pendente: "info",
-};
+function quoteCsv(value) {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
 
 export default function RelatoriosPage() {
-  const [dataInicio, setDataInicio] = useState("2026-06-01");
-  const [dataFim, setDataFim] = useState("2026-06-14");
-  const [mercado, setMercado] = useState("");
-  const [tipo, setTipo] = useState("Receita por mercado");
-  const [menuExport, setMenuExport] = useState(false);
+  const [from, setFrom] = useState(defaultStart);
+  const [to, setTo] = useState(defaultEnd);
+  const [marketId, setMarketId] = useState("");
+  const [markets, setMarkets] = useState([]);
+  const [report, setReport] = useState(null);
   const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const invalidDateRange = from && to && from > to;
 
-  const receitaFiltrada = useMemo(() => {
-    return RECEITA_POR_MERCADO.filter(
-      (r) => !mercado || r.mercado === mercado
-    );
-  }, [mercado]);
+  useEffect(() => {
+    api("/admin/markets").then(setMarkets).catch((requestError) => setError(requestError.message));
+  }, []);
 
-  const kpis = useMemo(() => {
-    const receita = receitaFiltrada.reduce((s, r) => s + r.receita, 0);
-    const transacoes = receitaFiltrada.reduce((s, r) => s + r.transacoes, 0);
-    const comerciantes = receitaFiltrada.reduce(
-      (s, r) => s + r.comerciantes,
-      0
-    );
-    const taxaCobranca =
-      transacoes > 0
-        ? Math.round((receita / (transacoes * 60)) * 100)
-        : 0;
-    return { receita, transacoes, comerciantes, taxaCobranca };
-  }, [receitaFiltrada]);
+  useEffect(() => {
+    if (invalidDateRange) return;
+    let active = true;
+    const params = new URLSearchParams({ from, to });
+    if (marketId) params.set("marketId", marketId);
+    api(`/admin/reports?${params}`)
+      .then((result) => { if (active) { setReport(result); setError(""); setPage(1); } })
+      .catch((requestError) => { if (active) setError(requestError.message); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [from, to, marketId, invalidDateRange]);
 
-  const barData = receitaFiltrada.map((r) => ({
-    label: r.mercado.replace("Mercado do ", "").replace("Mercado da ", ""),
-    valor: r.receita,
+  const payments = useMemo(() => (report?.payments || []).map(mapApiPayment), [report]);
+  const items = payments.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(payments.length / PAGE_SIZE));
+  const revenueByMarket = (report?.markets || []).map((item) => ({
+    label: item.market.replace(/^Mercado (do|da|de) /, ""),
+    valor: Number(item.revenue),
   }));
+  const daily = (report?.daily || []).map((item) => ({
+    dia: new Date(`${item.date}T00:00:00`).toLocaleDateString("pt-MZ", { day: "2-digit", month: "2-digit" }),
+    valor: Number(item.revenue),
+  }));
+  const selectedMarket = markets.find((market) => market.id === Number(marketId));
 
-  const transacoesFiltradas = useMemo(() => {
-    return TRANSACOES_RELATORIO.filter(
-      (t) => !mercado || t.mercado === mercado
-    );
-  }, [mercado]);
-
-  const totalPages = Math.max(
-    1,
-    Math.ceil(transacoesFiltradas.length / PAGE_SIZE)
-  );
-  const pageItems = transacoesFiltradas.slice(
-    (page - 1) * PAGE_SIZE,
-    page * PAGE_SIZE
-  );
-
-  function handleExport(formato) {
-  setMenuExport(false);
-
-  if (formato === "csv") {
-    const linhas = [
-      ["Mercado", "Receita (MT)", "Transacções", "Comerciantes"],
-      ...receitaFiltrada.map((r) => [
-        r.mercado,
-        r.receita.toFixed(2),
-        r.transacoes,
-        r.comerciantes,
+  function exportCsv() {
+    const rows = [
+      ["Referência", "Transacção", "Data", "Comerciante", "Mercado", "Banca", "Produto", "Período", "Método", "Valor (MT)"],
+      ...payments.map((payment) => [
+        payment.senha, payment.referencia, payment.paidAt, payment.comerciante,
+        payment.mercado, payment.banca, payment.produto, payment.periodo,
+        payment.metodo, payment.valor.toFixed(2),
       ]),
     ];
-    const csv = linhas.map((l) => l.join(";")).join("\n");
-    const blob = new Blob(["\uFEFF" + csv], {
-      type: "text/csv;charset=utf-8;",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `relatorio_${dataInicio}_a_${dataFim}.csv`;
-    a.click();
+    const csv = rows.map((row) => row.map(quoteCsv).join(";")).join("\r\n");
+    const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `pagamentos_${from}_${to}.csv`;
+    link.click();
     URL.revokeObjectURL(url);
-    return;
   }
 
-  // PDF via janela de impressão nativa
-  const fmtData = (iso) => {
-    if (!iso) return "—";
-    const [y, m, d] = iso.split("-");
-    return `${d}/${m}/${y}`;
-  };
-
-  exportarPdf({
-    titulo: tipo,
-    subtitulo: `Período: ${fmtData(dataInicio)} a ${fmtData(dataFim)} · Mercado: ${
-      mercado || "Todos"
-    }`,
-    resumo: [
-      { label: "Receita total", value: formatMT(kpis.receita) },
-      {
-        label: "Transacções",
-        value: kpis.transacoes.toLocaleString("pt-MZ"),
-      },
-      {
-        label: "Comerciantes activos",
-        value: kpis.comerciantes.toLocaleString("pt-MZ"),
-      },
-      { label: "Taxa de cobrança", value: `${kpis.taxaCobranca}%` },
-    ],
-    tabelas: [
-      {
-        title: "Resumo por mercado",
-        columns: [
-          "Mercado",
-          "Receita (MT)",
-          "Transacções",
-          "Comerciantes",
-          "Média / transacção",
-        ],
-        rows: [
-          ...receitaFiltrada.map((r) => [
-            r.mercado,
-            r.receita.toLocaleString("pt-MZ", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            }),
-            r.transacoes.toLocaleString("pt-MZ"),
-            r.comerciantes,
-            (r.receita / (r.transacoes || 1)).toLocaleString("pt-MZ", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            }),
-          ]),
-          [
-            "Total",
-            receitaFiltrada
-              .reduce((s, r) => s + r.receita, 0)
-              .toLocaleString("pt-MZ", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              }),
-            receitaFiltrada
-              .reduce((s, r) => s + r.transacoes, 0)
-              .toLocaleString("pt-MZ"),
-            receitaFiltrada.reduce((s, r) => s + r.comerciantes, 0),
-            "—",
-          ],
-        ],
-      },
-      {
-        title: "Transacções detalhadas",
-        columns: ["ID", "Data", "Comerciante", "Mercado", "Tipo", "Valor (MT)", "Estado"],
-        rows: transacoesFiltradas.map((t) => [
-          t.id,
-          t.data,
-          t.comerciante,
-          t.mercado,
-          t.tipo,
-          t.valor.toLocaleString("pt-MZ", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          }),
-          t.estado,
+  function exportPdf() {
+    exportarPdf({
+      titulo: "Relatório de pagamentos",
+      subtitulo: `Período: ${from} a ${to} · Mercado: ${selectedMarket?.name || "Todos"}`,
+      resumo: [
+        { label: "Receita total", value: formatMT(Number(report?.revenue || 0)) },
+        { label: "Pagamentos", value: String(report?.transactions || 0) },
+        { label: "Comerciantes pagantes", value: String(report?.merchants || 0) },
+      ],
+      tabelas: [{
+        title: "Pagamentos confirmados",
+        columns: ["Referência", "Data", "Comerciante", "Mercado", "Valor (MT)"],
+        rows: payments.map((payment) => [
+          payment.senha, payment.data, payment.comerciante,
+          payment.mercado, formatMT(payment.valor),
         ]),
-      },
-    ],
-    rodape: "Sistema de Gestão de Mercados Informais · Documento gerado automaticamente",
-  });
-}
+      }],
+      rodape: "Cobrança Beira · Relatório gerado a partir dos pagamentos registados",
+    });
+  }
 
   return (
     <div className="space-y-6">
-      {/* Cabeçalho */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-text">Relatórios</h1>
-          <p className="mt-1 text-sm text-text-muted">
-            Analise a receita, cobrança e evolução das taxas nos mercados.
-          </p>
-        </div>
-
-        <div className="relative">
-          <Button onClick={() => setMenuExport((v) => !v)}>
-            <Download size={16} />
-            Exportar
-          </Button>
-          {menuExport && (
-            <div className="absolute right-0 z-20 mt-2 w-44 overflow-hidden rounded-lg border border-border bg-white shadow-lg">
-              <button
-                onClick={() => handleExport("csv")}
-                className="block w-full px-3 py-2 text-left text-sm text-text hover:bg-slate-50"
-              >
-                Exportar CSV
-              </button>
-              <button
-                onClick={() => handleExport("pdf")}
-                className="block w-full px-3 py-2 text-left text-sm text-text hover:bg-slate-50"
-              >
-                Exportar PDF
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Filtros */}
-      <Card className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <label className="mb-1 block text-xs font-medium text-text-muted">
-            Data de início
-          </label>
-          <div className="relative">
-            <Calendar
-              size={14}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
-            />
-            <input
-              type="date"
-              value={dataInicio}
-              onChange={(e) => setDataInicio(e.target.value)}
-              className="h-10 w-full rounded-lg border border-border bg-white pl-9 pr-2 text-sm text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="mb-1 block text-xs font-medium text-text-muted">
-            Data de fim
-          </label>
-          <div className="relative">
-            <Calendar
-              size={14}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
-            />
-            <input
-              type="date"
-              value={dataFim}
-              onChange={(e) => setDataFim(e.target.value)}
-              className="h-10 w-full rounded-lg border border-border bg-white pl-9 pr-2 text-sm text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="mb-1 block text-xs font-medium text-text-muted">
-            Mercado
-          </label>
-          <select
-            value={mercado}
-            onChange={(e) => {
-              setMercado(e.target.value);
-              setPage(1);
-            }}
-            className="h-10 w-full rounded-lg border border-border bg-white px-3 text-sm text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-          >
-            <option value="">Todos os mercados</option>
-            {MERCADOS.map((m) => (
-              <option key={m.id} value={m.nome}>
-                {m.nome}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="mb-1 block text-xs font-medium text-text-muted">
-            Tipo de relatório
-          </label>
-          <select
-            value={tipo}
-            onChange={(e) => setTipo(e.target.value)}
-            className="h-10 w-full rounded-lg border border-border bg-white px-3 text-sm text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-          >
-            {TIPOS_RELATORIO.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-4"><div><h1 className="text-2xl font-semibold">Relatórios</h1><p className="mt-1 text-sm text-text-muted">Receita e pagamentos confirmados no período seleccionado.</p></div><div className="flex gap-2"><Button variant="secondary" onClick={exportCsv} disabled={!report?.payments?.length}><Download size={16} /> CSV</Button><Button onClick={exportPdf} disabled={!report?.payments?.length}><Download size={16} /> PDF</Button></div></div>
+      <Card className="grid gap-3 p-4 sm:grid-cols-3">
+        <label className="text-xs font-medium text-text-muted">Data de início<div className="relative mt-1"><Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2" /><input type="date" value={from} max={to} onChange={(event) => { setLoading(true); setFrom(event.target.value); }} className="h-10 w-full rounded-lg border border-border pl-9 pr-2 text-sm text-text" /></div></label>
+        <label className="text-xs font-medium text-text-muted">Data de fim<div className="relative mt-1"><Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2" /><input type="date" value={to} min={from} max={defaultEnd} onChange={(event) => { setLoading(true); setTo(event.target.value); }} className="h-10 w-full rounded-lg border border-border pl-9 pr-2 text-sm text-text" /></div></label>
+        <label className="text-xs font-medium text-text-muted">Mercado<select value={marketId} onChange={(event) => { setLoading(true); setMarketId(event.target.value); }} className="mt-1 h-10 w-full rounded-lg border border-border bg-white px-3 text-sm text-text"><option value="">Todos os mercados</option>{markets.map((market) => <option key={market.id} value={market.id}>{market.name}</option>)}</select></label>
       </Card>
-
-      {/* KPIs */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard
-          icon={<TrendingUp size={18} />}
-          label="Receita total"
-          value={formatMT(kpis.receita)}
-          hint="No período seleccionado"
-          accent="primary"
-        />
-        <KpiCard
-          icon={<Receipt size={18} />}
-          label="Transacções"
-          value={kpis.transacoes.toLocaleString("pt-MZ")}
-          hint="Total processado"
-          accent="info"
-        />
-        <KpiCard
-          icon={<Users size={18} />}
-          label="Comerciantes activos"
-          value={kpis.comerciantes.toLocaleString("pt-MZ")}
-          hint="Com pelo menos uma cobrança"
-          accent="success"
-        />
-        <KpiCard
-          icon={<Percent size={18} />}
-          label="Taxa de cobrança"
-          value={`${kpis.taxaCobranca}%`}
-          hint="Receita vs. esperado"
-          accent="warning"
-        />
-      </div>
-
-      {/* Gráficos */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <Card className="p-5 xl:col-span-2">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-semibold text-text">
-                Evolução da receita diária
-              </h2>
-              <p className="text-xs text-text-muted">
-                Últimos 14 dias · valores em MT
-              </p>
-            </div>
-            <Badge variant="success">+12,4% vs. período anterior</Badge>
-          </div>
-          <LineChart data={EVOLUCAO_DIARIA} height={240} />
-        </Card>
-
-        <Card className="p-5">
-          <div className="mb-4">
-            <h2 className="text-sm font-semibold text-text">
-              Receita por mercado
-            </h2>
-            <p className="text-xs text-text-muted">Top 5 mercados</p>
-          </div>
-          <BarChart data={barData} height={240} />
-        </Card>
-      </div>
-
-      {/* Tabela resumo por mercado */}
-      <Card className="overflow-hidden p-0">
-        <div className="border-b border-border px-5 py-3">
-          <h2 className="text-sm font-semibold text-text">
-            Resumo por mercado
-          </h2>
-        </div>
-        <Table>
-          <THead>
-            <TH>Mercado</TH>
-            <TH className="text-right">Receita</TH>
-            <TH className="text-right">Transacções</TH>
-            <TH className="text-right">Comerciantes</TH>
-            <TH className="text-right">Média / transacção</TH>
-          </THead>
-          <TBody>
-            {receitaFiltrada.map((r) => (
-              <TR key={r.mercado}>
-                <TD className="font-medium text-text">{r.mercado}</TD>
-                <TD className="text-right font-mono text-text">
-                  {formatMT(r.receita)}
-                </TD>
-                <TD className="text-right text-text-muted">
-                  {r.transacoes.toLocaleString("pt-MZ")}
-                </TD>
-                <TD className="text-right text-text-muted">
-                  {r.comerciantes}
-                </TD>
-                <TD className="text-right text-text-muted">
-                  {formatMT(r.transacoes ? r.receita / r.transacoes : 0)}
-                </TD>
-              </TR>
-            ))}
-            {receitaFiltrada.length > 0 && (
-              <TR>
-                <TD className="font-semibold text-text">Total</TD>
-                <TD className="text-right font-semibold text-text">
-                  {formatMT(
-                    receitaFiltrada.reduce((s, r) => s + r.receita, 0)
-                  )}
-                </TD>
-                <TD className="text-right font-semibold text-text">
-                  {receitaFiltrada
-                    .reduce((s, r) => s + r.transacoes, 0)
-                    .toLocaleString("pt-MZ")}
-                </TD>
-                <TD className="text-right font-semibold text-text">
-                  {receitaFiltrada.reduce((s, r) => s + r.comerciantes, 0)}
-                </TD>
-                <TD className="text-right font-semibold text-text">—</TD>
-              </TR>
-            )}
-            {receitaFiltrada.length === 0 && (
-              <TR>
-                <TD className="py-8 text-center text-sm text-text-muted">
-                  Sem dados para o filtro seleccionado.
-                </TD>
-              </TR>
-            )}
-          </TBody>
-        </Table>
-      </Card>
-
-      {/* Tabela detalhada */}
-      <Card className="overflow-hidden p-0">
-        <div className="flex items-center justify-between border-b border-border px-5 py-3">
-          <h2 className="text-sm font-semibold text-text">
-            Transacções detalhadas
-          </h2>
-          <span className="text-xs text-text-muted">
-            {transacoesFiltradas.length} registos
-          </span>
-        </div>
-        <Table>
-          <THead>
-            <TH>ID</TH>
-            <TH>Data</TH>
-            <TH>Comerciante</TH>
-            <TH>Mercado</TH>
-            <TH>Tipo</TH>
-            <TH className="text-right">Valor</TH>
-            <TH>Estado</TH>
-          </THead>
-          <TBody>
-            {pageItems.map((t) => (
-              <TR key={t.id}>
-                <TD className="font-mono text-xs text-text-muted">{t.id}</TD>
-                <TD className="text-text-muted">{t.data}</TD>
-                <TD className="font-medium text-text">{t.comerciante}</TD>
-                <TD className="text-text-muted">{t.mercado}</TD>
-                <TD className="text-text-muted">{t.tipo}</TD>
-                <TD className="text-right font-mono text-text">
-                  {formatMT(t.valor)}
-                </TD>
-                <TD>
-                  <Badge variant={estadoVariants[t.estado]}>{t.estado}</Badge>
-                </TD>
-              </TR>
-            ))}
-            {pageItems.length === 0 && (
-              <TR>
-                <TD className="py-8 text-center text-sm text-text-muted">
-                  Sem transacções para o filtro seleccionado.
-                </TD>
-              </TR>
-            )}
-          </TBody>
-        </Table>
-        <Pagination page={page} totalPages={totalPages} onChange={setPage} />
-      </Card>
+      {(invalidDateRange || error) && <p role="alert" className="rounded-lg border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">{invalidDateRange ? "A data inicial não pode ser posterior à data final." : error}</p>}
+      <div className="grid gap-4 sm:grid-cols-3"><Kpi icon={<TrendingUp size={18} />} label="Receita total" value={formatMT(Number(report?.revenue || 0))} /><Kpi icon={<Receipt size={18} />} label="Pagamentos" value={Number(report?.transactions || 0).toLocaleString("pt-MZ")} /><Kpi icon={<Users size={18} />} label="Comerciantes pagantes" value={Number(report?.merchants || 0).toLocaleString("pt-MZ")} /></div>
+      <div className="grid gap-4 xl:grid-cols-3"><Card className="p-5 xl:col-span-2"><h2 className="text-sm font-semibold">Evolução da receita diária</h2>{daily.length ? <LineChart data={daily} height={240} /> : <Empty loading={loading} />}</Card><Card className="p-5"><h2 className="text-sm font-semibold">Receita por mercado</h2>{revenueByMarket.length ? <BarChart data={revenueByMarket} height={240} /> : <Empty loading={loading} />}</Card></div>
+      <Card className="overflow-hidden p-0"><div className="border-b border-border px-5 py-3"><h2 className="text-sm font-semibold">Resumo por mercado</h2></div><Table><THead><TH>Mercado</TH><TH className="text-right">Receita</TH><TH className="text-right">Pagamentos</TH><TH className="text-right">Comerciantes pagantes</TH><TH className="text-right">Média / pagamento</TH></THead><TBody>
+        {(report?.markets || []).map((item) => <TR key={item.marketId}><TD className="font-medium">{item.market}</TD><TD className="text-right">{formatMT(Number(item.revenue))}</TD><TD className="text-right">{item.transactions}</TD><TD className="text-right">{item.merchants}</TD><TD className="text-right">{formatMT(item.transactions ? Number(item.revenue) / item.transactions : 0)}</TD></TR>)}
+        {!loading && !report?.markets?.length && <TR><TD className="py-8 text-center text-sm text-text-muted">Sem pagamentos no período seleccionado.</TD></TR>}
+      </TBody></Table></Card>
+      <Card className="overflow-hidden p-0"><div className="border-b border-border px-5 py-3"><h2 className="text-sm font-semibold">Pagamentos detalhados</h2></div><Table><THead><TH>Referência</TH><TH>Data</TH><TH>Comerciante</TH><TH>Mercado</TH><TH>Produto</TH><TH>Método</TH><TH className="text-right">Valor</TH></THead><TBody>
+        {items.map((payment) => <TR key={payment.id}><TD className="font-mono text-xs">{payment.senha}</TD><TD>{payment.data}</TD><TD>{payment.comerciante}</TD><TD>{payment.mercado}</TD><TD>{payment.produto}</TD><TD>{payment.metodo}</TD><TD className="text-right">{formatMT(payment.valor)}</TD></TR>)}
+        {loading && <TR><TD className="py-8 text-center text-sm text-text-muted">A carregar relatório…</TD></TR>}
+        {!loading && items.length === 0 && <TR><TD className="py-8 text-center text-sm text-text-muted">Sem pagamentos no período seleccionado.</TD></TR>}
+      </TBody></Table><Pagination page={page} totalPages={totalPages} onChange={setPage} /></Card>
     </div>
   );
 }
 
-/* ---------- KPI Card interno ---------- */
+function Kpi({ icon, label, value }) {
+  return <Card className="flex items-center gap-4 p-5"><div className="rounded-lg bg-primary/10 p-2 text-primary">{icon}</div><div><p className="text-xs uppercase text-text-muted">{label}</p><p className="mt-1 text-xl font-semibold">{value}</p></div></Card>;
+}
 
-function KpiCard({ icon, label, value, hint, accent = "primary" }) {
-  const accents = {
-    primary: "bg-primary/10 text-primary",
-    info: "bg-sky-100 text-sky-700",
-    success: "bg-emerald-100 text-emerald-700",
-    warning: "bg-amber-100 text-amber-700",
-  };
-  return (
-    <Card className="p-5">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
-            {label}
-          </p>
-          <p className="mt-2 text-2xl font-semibold text-text">{value}</p>
-          <p className="mt-1 text-xs text-text-muted">{hint}</p>
-        </div>
-        <div className={`rounded-lg p-2 ${accents[accent]}`}>{icon}</div>
-      </div>
-    </Card>
-  );
+function Empty({ loading }) {
+  return <div className="flex h-[240px] items-center justify-center text-sm text-text-muted">{loading ? "A carregar dados…" : "Sem pagamentos no período."}</div>;
 }

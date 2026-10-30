@@ -8,13 +8,16 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Column;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "payments")
+@Table(name = "payments", uniqueConstraints = @UniqueConstraint(
+    columnNames = {"account_id", "period_start", "period_end"}
+))
 public class Payment {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

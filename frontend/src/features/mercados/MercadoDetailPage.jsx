@@ -1,319 +1,173 @@
-import { useMemo, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import {
-  Plus,
-  Search,
-  MapPin,
-  User,
-  Store,
-  Users,
-  Wallet,
-  ArrowLeft,
-} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import { ArrowLeft, MapPin, Plus, Store, Users, Wallet } from "lucide-react";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
-import Input from "../../components/ui/Input";
-import Select from "../../components/ui/Select";
 import Modal from "../../components/ui/Modal";
 import Tabs from "../../components/ui/Tabs";
-import Breadcrumb from "../../components/ui/Breadcrumb";
-import {
-  Table,
-  THead,
-  TH,
-  TBody,
-  TR,
-  TD,
-} from "../../components/ui/Table";
-import Pagination from "../../components/ui/Pagination";
+import { Table, THead, TH, TBody, TR, TD } from "../../components/ui/Table";
 import { formatMT } from "../../lib/format";
-import {
-  MERCADOS_DETALHADOS,
-  BANCAS_MAQUININO,
-  TIPOS_ACTIVIDADE,
-  MERCADOS,
-} from "../../data/mock";
+import { api, apiPost } from "../../lib/api";
 
-const PAGE_SIZE = 8;
+const TABS = [
+  { value: "bancas", label: "Bancas" },
+  { value: "comerciantes", label: "Comerciantes" },
+  { value: "fiscais", label: "Fiscais" },
+  { value: "taxas", label: "Taxas" },
+];
+
+async function fetchMarketDetails(id) {
+  const marketList = await api("/admin/markets");
+  const market = marketList.find((item) => item.id === Number(id));
+  if (!market) throw new Error("Mercado não encontrado.");
+  const start = new Date();
+  start.setDate(1);
+  const from = start.toISOString().slice(0, 10);
+  const to = new Date().toISOString().slice(0, 10);
+  const [merchantItems, fiscalItems, rateItems, dashboard] = await Promise.all([
+    api("/admin/merchants"),
+    api("/admin/fiscals"),
+    api("/admin/rates"),
+    api(`/admin/dashboard?from=${from}&to=${to}&marketId=${market.id}`),
+  ]);
+  return {
+    market,
+    merchants: merchantItems.filter((item) => item.marketId === market.id),
+    fiscals: fiscalItems.filter((item) => item.marketId === market.id),
+    rates: rateItems.filter((item) => item.marketId === market.id),
+    revenue: Number(dashboard.revenue),
+  };
+}
 
 export default function MercadoDetailPage() {
   const { id } = useParams();
-  const mercado = useMemo(
-    () => MERCADOS_DETALHADOS.find((m) => String(m.id) === String(id)) || MERCADOS_DETALHADOS[0],
-    [id]
-  );
-
+  const [market, setMarket] = useState(null);
+  const [merchants, setMerchants] = useState([]);
+  const [fiscals, setFiscals] = useState([]);
+  const [rates, setRates] = useState([]);
+  const [revenue, setRevenue] = useState(0);
   const [tab, setTab] = useState("bancas");
-  const [bancas, setBancas] = useState(BANCAS_MAQUININO);
-  const [pesquisa, setPesquisa] = useState("");
-  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [stallForm, setStallForm] = useState({ code: "", product: "" });
+  const [saving, setSaving] = useState(false);
 
-  // Modal
-  const [novaOpen, setNovaOpen] = useState(false);
-  const [form, setForm] = useState({ codigo: "", tipo: "", mercado: mercado.nome });
-  const [formError, setFormError] = useState("");
+  useEffect(() => {
+    let active = true;
+    fetchMarketDetails(id)
+      .then((details) => {
+        if (!active) return;
+        setMarket(details.market);
+        setMerchants(details.merchants);
+        setFiscals(details.fiscals);
+        setRates(details.rates);
+        setRevenue(details.revenue);
+        setError("");
+      })
+      .catch((requestError) => { if (active) setError(requestError.message); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [id]);
 
-  const bancasFiltradas = useMemo(() => {
-    const q = pesquisa.trim().toLowerCase();
-    return bancas.filter(
-      (b) =>
-        !q ||
-        b.codigo.toLowerCase().includes(q) ||
-        b.tipo.toLowerCase().includes(q) ||
-        (b.comerciante || "").toLowerCase().includes(q)
-    );
-  }, [bancas, pesquisa]);
+  const stalls = useMemo(() => market?.stalls || [], [market]);
+  const occupancy = stalls.filter((stall) => stall.occupied).length;
+  const currentItems = useMemo(() => {
+    const text = search.trim().toLowerCase();
+    const source = tab === "bancas" ? stalls
+      : tab === "comerciantes" ? merchants
+      : tab === "fiscais" ? fiscals : rates;
+    return source.filter((item) => JSON.stringify(item).toLowerCase().includes(text));
+  }, [tab, stalls, merchants, fiscals, rates, search]);
 
-  const totalPages = Math.max(1, Math.ceil(bancasFiltradas.length / PAGE_SIZE));
-  const pageItems = bancasFiltradas.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  function abrirNova() {
-    setForm({ codigo: "", tipo: "", mercado: mercado.nome });
-    setFormError("");
-    setNovaOpen(true);
-  }
-
-  function guardar() {
-    if (!form.codigo.trim() || !form.tipo) {
-      setFormError("Preencha o código e o tipo de actividade.");
-      return;
+  async function createStall() {
+    setSaving(true);
+    setError("");
+    try {
+      await apiPost("/admin/stalls", {
+        marketId: market.id,
+        code: stallForm.code.trim().toUpperCase(),
+        product: stallForm.product,
+      });
+      setModalOpen(false);
+      setStallForm({ code: "", product: "" });
+      const details = await fetchMarketDetails(id);
+      setMarket(details.market);
+      setMerchants(details.merchants);
+      setFiscals(details.fiscals);
+      setRates(details.rates);
+      setRevenue(details.revenue);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setSaving(false);
     }
-    const nova = {
-      id: bancas.length + 1,
-      codigo: form.codigo.trim().toUpperCase(),
-      tipo: form.tipo,
-      comerciante: null,
-      estado: "Livre",
-    };
-    setBancas((prev) => [nova, ...prev]);
-    setNovaOpen(false);
-    setPage(1);
   }
 
-  const ocupadas = bancas.filter((b) => b.estado === "Ocupada").length;
+  if (loading && !market) return <p className="text-sm text-text-muted">A carregar mercado…</p>;
+  if (!market) return <div role="alert" className="text-sm text-danger">{error || "Mercado não encontrado."}</div>;
 
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
-      <Breadcrumb
-        items={[
-          { label: "Mercados", to: "/mercados" },
-          { label: mercado.nome.replace("Mercado do ", "").replace("Mercado da ", "").replace("Mercado de ", "") },
-        ]}
-      />
-
-      {/* Botão voltar */}
-      <Link
-        to="/mercados"
-        className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text"
-      >
-        <ArrowLeft size={16} />
-        Voltar aos mercados
-      </Link>
-
-      {/* Cabeçalho + indicadores */}
-      <div className="space-y-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold text-text">{mercado.nome}</h1>
-            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-text-muted">
-              <span className="inline-flex items-center gap-1.5">
-                <MapPin size={14} />
-                {mercado.localizacao}
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <User size={14} />
-                Gestor: {mercado.gestor}
-              </span>
-              <Badge variant={mercado.estado === "Activo" ? "success" : "neutral"}>
-                {mercado.estado}
-              </Badge>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Indicador
-            icon={Store}
-            label="Bancas"
-            value={`${bancas.length} (${ocupadas} ocupadas)`}
-          />
-          <Indicador
-            icon={Users}
-            label="Comerciantes activos"
-            value={mercado.comerciantes}
-          />
-          <Indicador
-            icon={Wallet}
-            label="Arrecadado no mês"
-            value={formatMT(452800)}
-          />
+      <Link to="/mercados" className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text"><ArrowLeft size={16} /> Voltar aos mercados</Link>
+      <div>
+        <h1 className="text-2xl font-semibold text-text">{market.name}</h1>
+        <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-text-muted">
+          <span className="inline-flex items-center gap-1"><MapPin size={14} />{market.location || "Localização não definida"}</span>
+          <span>Gestor: {market.manager || "Não atribuído"}</span>
+          <Badge variant={market.active ? "success" : "neutral"}>{market.active ? "Activo" : "Inactivo"}</Badge>
         </div>
       </div>
-
-      {/* Separadores */}
-      <Tabs
-        value={tab}
-        onChange={setTab}
-        tabs={[
-          { value: "bancas", label: "Bancas", count: bancas.length },
-          { value: "comerciantes", label: "Comerciantes", count: mercado.comerciantes },
-          { value: "fiscais", label: "Fiscais" },
-          { value: "taxas", label: "Taxas" },
-        ]}
-      />
-
-      {/* Conteúdo do separador */}
-      {tab === "bancas" && (
-        <Card className="overflow-hidden p-0">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
-            <div className="relative w-full max-w-xs">
-              <Search
-                size={16}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
-              />
-              <input
-                type="text"
-                placeholder="Pesquisar banca ou comerciante…"
-                value={pesquisa}
-                onChange={(e) => {
-                  setPesquisa(e.target.value);
-                  setPage(1);
-                }}
-                className="h-9 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-sm text-text placeholder:text-text-muted/70 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
-            <Button onClick={abrirNova}>
-              <Plus size={16} />
-              Nova banca
-            </Button>
-          </div>
-
-          <Table>
-            <THead>
-              <TH>Código</TH>
-              <TH>Tipo de actividade</TH>
-              <TH>Comerciante associado</TH>
-              <TH>Estado</TH>
-              <TH className="text-right">Acções</TH>
-            </THead>
-            <TBody>
-              {pageItems.map((b) => (
-                <TR key={b.id}>
-                  <TD className="font-mono text-xs font-medium text-text">{b.codigo}</TD>
-                  <TD className="text-text">{b.tipo}</TD>
-                  <TD className={b.comerciante ? "text-text" : "text-text-muted italic"}>
-                    {b.comerciante || "— sem comerciante —"}
-                  </TD>
-                  <TD>
-                    <Badge variant={b.estado === "Ocupada" ? "success" : "neutral"}>
-                      {b.estado}
-                    </Badge>
-                  </TD>
-                  <TD className="text-right">
-                    <button
-                      className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary-soft"
-                      onClick={() => alert(`Detalhe da banca ${b.codigo} (mock).`)}
-                    >
-                      Ver
-                    </button>
-                  </TD>
-                </TR>
-              ))}
-              {pageItems.length === 0 && (
-                <TR>
-                  <TD className="py-8 text-center text-sm text-text-muted">
-                    Nenhuma banca encontrada.
-                  </TD>
-                </TR>
-              )}
-            </TBody>
-          </Table>
-
-          <Pagination page={page} totalPages={totalPages} onChange={setPage} />
-        </Card>
-      )}
-
-      {tab !== "bancas" && (
-        <Card className="p-8 text-center">
-          <p className="text-sm text-text-muted">
-            Separador "{tab}" será implementado nas próximas telas.
-          </p>
-        </Card>
-      )}
-
-      {/* Modal Nova Banca */}
-      <Modal
-        open={novaOpen}
-        onClose={() => setNovaOpen(false)}
-        title="Nova banca"
-        description={`Adicionar banca ao ${mercado.nome}.`}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setNovaOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={guardar}>Guardar</Button>
-          </>
-        }
-      >
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Summary icon={Store} label="Bancas" value={`${stalls.length} (${occupancy} ocupadas)`} />
+        <Summary icon={Users} label="Comerciantes" value={merchants.length} />
+        <Summary icon={Wallet} label="Receita neste mês" value={formatMT(revenue)} />
+      </div>
+      <Tabs value={tab} onChange={(value) => { setTab(value); setSearch(""); }} tabs={TABS.map((item) => ({
+        ...item,
+        count: item.value === "bancas" ? stalls.length
+          : item.value === "comerciantes" ? merchants.length
+          : item.value === "fiscais" ? fiscals.length : rates.length,
+      }))} />
+      <Card className="overflow-hidden p-0">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Pesquisar…" className="h-9 w-full max-w-xs rounded-lg border border-border px-3 text-sm" />
+          {tab === "bancas" && <Button onClick={() => setModalOpen(true)}><Plus size={16} /> Nova banca</Button>}
+        </div>
+        {tab === "bancas" && <Table><THead><TH>Código</TH><TH>Produto</TH><TH>Comerciante</TH><TH>Estado</TH></THead><TBody>
+          {currentItems.map((stall) => <TR key={stall.id}><TD className="font-mono">{stall.code}</TD><TD>{stall.product || "—"}</TD><TD>{stall.merchant || "— sem comerciante —"}</TD><TD><Badge variant={stall.occupied ? "success" : "neutral"}>{stall.occupied ? "Ocupada" : "Livre"}</Badge></TD></TR>)}
+          {currentItems.length === 0 && <EmptyRow text="Sem bancas para apresentar." />}
+        </TBody></Table>}
+        {tab === "comerciantes" && <Table><THead><TH>Nome</TH><TH>NUIT</TH><TH>Banca</TH><TH>Produto</TH><TH>Estado</TH></THead><TBody>
+          {currentItems.map((merchant) => <TR key={merchant.id}><TD>{merchant.name}</TD><TD>{merchant.nuit || "—"}</TD><TD>{merchant.stall}</TD><TD>{merchant.product}</TD><TD><Badge variant={merchant.status === "Bloqueado" ? "danger" : "success"}>{merchant.status}</Badge></TD></TR>)}
+          {currentItems.length === 0 && <EmptyRow text="Sem comerciantes para apresentar." />}
+        </TBody></Table>}
+        {tab === "fiscais" && <Table><THead><TH>Nome</TH><TH>Contacto</TH><TH>Zona / Turno</TH><TH>Estado</TH></THead><TBody>
+          {currentItems.map((fiscal) => <TR key={fiscal.id}><TD>{fiscal.name}</TD><TD>{fiscal.phone}</TD><TD>{fiscal.zone} · {fiscal.shift}</TD><TD>{fiscal.status}</TD></TR>)}
+          {currentItems.length === 0 && <EmptyRow text="Sem fiscais para apresentar." />}
+        </TBody></Table>}
+        {tab === "taxas" && <Table><THead><TH>Produto</TH><TH>Valor</TH><TH>Periodicidade</TH><TH>Comerciantes</TH><TH>Estado</TH></THead><TBody>
+          {currentItems.map((rate) => <TR key={rate.id}><TD>{rate.product}</TD><TD>{formatMT(Number(rate.amount))}</TD><TD>{rate.periodicity}</TD><TD>{rate.merchants}</TD><TD>{rate.active ? "Activa" : "Suspensa"}</TD></TR>)}
+          {currentItems.length === 0 && <EmptyRow text="Sem taxas para apresentar." />}
+        </TBody></Table>}
+      </Card>
+      {error && <p role="alert" className="rounded-lg border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">{error}</p>}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Nova banca" description={`Adicionar banca ao ${market.name}.`} footer={<><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button><Button onClick={createStall} disabled={saving}>{saving ? "A guardar…" : "Guardar"}</Button></>}>
         <div className="space-y-4">
-          <Input
-            id="codigo"
-            label="Código"
-            placeholder="Ex.: MQ-013"
-            value={form.codigo}
-            onChange={(e) => setForm({ ...form, codigo: e.target.value })}
-            hint="Formato recomendado: prefixo do mercado + 3 dígitos."
-          />
-          <Select
-            id="tipo"
-            label="Tipo de actividade"
-            value={form.tipo}
-            onChange={(e) => setForm({ ...form, tipo: e.target.value })}
-          >
-            <option value="">Selecione…</option>
-            {TIPOS_ACTIVIDADE.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </Select>
-          <Select
-            id="mercado"
-            label="Mercado"
-            value={form.mercado}
-            onChange={(e) => setForm({ ...form, mercado: e.target.value })}
-          >
-            {MERCADOS.map((m) => (
-              <option key={m.id} value={m.nome}>
-                {m.nome}
-              </option>
-            ))}
-          </Select>
-
-          {formError && (
-            <div className="rounded-lg border border-danger/20 bg-danger/5 px-3 py-2.5 text-sm text-danger">
-              {formError}
-            </div>
-          )}
+          <label className="block text-sm font-medium">Código<input value={stallForm.code} onChange={(event) => setStallForm((current) => ({ ...current, code: event.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-border px-3 font-mono text-sm" /></label>
+          <label className="block text-sm font-medium">Produto<select value={stallForm.product} onChange={(event) => setStallForm((current) => ({ ...current, product: event.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-border bg-white px-3 text-sm"><option value="">Seleccionar…</option>{rates.map((rate) => <option key={rate.id} value={rate.product}>{rate.product}</option>)}</select></label>
         </div>
       </Modal>
     </div>
   );
 }
 
-function Indicador({ icon: Icon, label, value }) {
-  return (
-    <Card className="flex items-center gap-4 p-4">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary">
-        <Icon size={18} />
-      </div>
-      <div className="min-w-0">
-        <p className="text-xs text-text-muted">{label}</p>
-        <p className="truncate text-base font-semibold text-text">{value}</p>
-      </div>
-    </Card>
-  );
+function Summary({ icon: Icon, label, value }) {
+  return <Card className="flex items-center gap-4 p-4"><div className="rounded-lg bg-primary-soft p-2 text-primary"><Icon size={18} /></div><div><p className="text-xs text-text-muted">{label}</p><p className="font-semibold">{value}</p></div></Card>;
+}
+
+function EmptyRow({ text }) {
+  return <TR><TD className="py-8 text-center text-sm text-text-muted">{text}</TD></TR>;
 }

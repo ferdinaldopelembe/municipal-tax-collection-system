@@ -16,24 +16,12 @@ import NovoComerciantePage from "./features/comerciantes/NovoComerciantePage";
 import PagamentosPage from "./features/pagamentos/PagamentosPage";
 import RegistarPagamentoPage from "./features/pagamentos/RegistarPagamentoPage";
 import TaxasPage from "./features/taxas/TaxasPage";
-// Placeholders temporários — cada um será substituído na sua tela
 import SenhasPage from "./features/senhas/SenhasPage";
 import RelatoriosPage from "./features/relatorios/RelatoriosPage";
 import NovaTaxaPage from "./features/taxas/NovaTaxaPage";
 import EmitirSenhaPage from "./features/senhas/EmitirSenhaPage";
 import AuditoriaPage from "./features/auditoria/AuditoriaPage";
 import ConfiguracoesPage from "./features/configuracoes/ConfiguracoesPage";
-
-function Placeholder({ title }) {
-  return (
-    <div>
-      <h1 className="text-2xl font-semibold text-text">{title}</h1>
-      <p className="mt-2 text-sm text-text-muted">
-        Esta tela será implementada no próximo passo.
-      </p>
-    </div>
-  );
-}
 
 function HomeRedirect() {
   const { user } = useAuth();
@@ -70,7 +58,7 @@ export default function App() {
                   <Route path="/taxas/nova" element={<NovaTaxaPage />} />
                   <Route path="/senhas" element={<SenhasPage />} />
                   <Route path="/senhas/nova" element={<EmitirSenhaPage />} />
-                  <Route path="/senhas/:id" element={<Placeholder title="Detalhe da senha" />} />
+                  <Route path="/senhas/:id" element={<Navigate to="/senhas" replace />} />
                   <Route path="/fiscais" element={<FiscaisPage />} />
                   <Route path="/fiscais/novo" element={<NovoFiscalPage />} />
                   <Route path="/relatorios" element={<RelatoriosPage />} />

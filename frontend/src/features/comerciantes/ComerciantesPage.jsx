@@ -1,153 +1,120 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  Plus,
-  Search,
-  Eye,
-  Pencil,
-  Lock,
-  Unlock,
-} from "lucide-react";
+import { Plus, Search, Pencil, Lock, Unlock } from "lucide-react";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
 import Tooltip from "../../components/ui/Tooltip";
-import {
-  Table,
-  THead,
-  TH,
-  TBody,
-  TR,
-  TD,
-} from "../../components/ui/Table";
+import { Table, THead, TH, TBody, TR, TD } from "../../components/ui/Table";
 import Pagination from "../../components/ui/Pagination";
-import {
-  COMERCIANTES,
-  MERCADOS,
-  TIPOS_PRODUTO,
-} from "../../data/mock";
+import { api, apiPatch } from "../../lib/api";
 
 const PAGE_SIZE = 8;
+const stateVariants = { Regular: "success", "Em dívida": "warning", Bloqueado: "danger" };
 
-const estadoVariants = {
-  Regular: "success",
-  "Em dívida": "warning",
-  Bloqueado: "danger",
-};
+function mapMerchant(item) {
+  return {
+    ...item,
+    nome: item.name,
+    nuit: item.nuit || "—",
+    contacto: item.phone || "—",
+    mercado: item.market || "—",
+    banca: item.stall || "—",
+    produto: item.product || "—",
+    taxa: item.periodicity && item.amount
+      ? `${item.periodicity} · ${Number(item.amount).toLocaleString("pt-MZ")} MT`
+      : "Sem taxa activa",
+    estado: item.status,
+    motivoBloqueio: item.statusReason,
+  };
+}
 
 export default function ComerciantesPage() {
-  const [comerciantes, setComerciantes] = useState(COMERCIANTES);
-  const [pesquisa, setPesquisa] = useState("");
-  const [mercado, setMercado] = useState("");
-  const [produto, setProduto] = useState("");
-  const [estado, setEstado] = useState("");
+  const [merchants, setMerchants] = useState([]);
+  const [markets, setMarkets] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+  const [marketFilter, setMarketFilter] = useState("");
+  const [productFilter, setProductFilter] = useState("");
+  const [stateFilter, setStateFilter] = useState("");
   const [page, setPage] = useState(1);
 
-  const filtrados = useMemo(() => {
-    const q = pesquisa.trim().toLowerCase();
-    return comerciantes.filter((c) => {
-      const matchQ =
-        !q ||
-        c.nome.toLowerCase().includes(q) ||
-        c.nuit.includes(q) ||
-        c.contacto.replace(/\s/g, "").includes(q.replace(/\s/g, ""));
-      const matchMercado = !mercado || c.mercado === mercado;
-      const matchProduto = !produto || c.produto === produto;
-      const matchEstado = !estado || c.estado === estado;
-      return matchQ && matchMercado && matchProduto && matchEstado;
-    });
-  }, [comerciantes, pesquisa, mercado, produto, estado]);
+  useEffect(() => {
+    let active = true;
+    Promise.all([api("/admin/merchants"), api("/admin/markets")])
+      .then(([merchantItems, marketItems]) => {
+        if (active) {
+          setMerchants(merchantItems.map(mapMerchant));
+          setMarkets(marketItems);
+        }
+      })
+      .catch((requestError) => { if (active) setError(requestError.message); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
 
-  const totalPages = Math.max(1, Math.ceil(filtrados.length / PAGE_SIZE));
-  const pageItems = filtrados.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const products = [...new Set(merchants.map((merchant) => merchant.produto).filter((value) => value !== "—"))];
+  const filtered = useMemo(() => {
+    const text = query.trim().toLowerCase();
+    return merchants.filter((merchant) => (
+      (!text || merchant.nome.toLowerCase().includes(text)
+        || merchant.nuit.toLowerCase().includes(text)
+        || merchant.contacto.toLowerCase().includes(text))
+      && (!marketFilter || merchant.mercado === marketFilter)
+      && (!productFilter || merchant.produto === productFilter)
+      && (!stateFilter || merchant.estado === stateFilter)
+    ));
+  }, [merchants, query, marketFilter, productFilter, stateFilter]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  function resetPage(fn) {
-    return (e) => {
-      fn(e.target.value);
-      setPage(1);
-    };
-  }
-
-  function toggleBloqueio(c) {
-    const bloqueado = c.estado === "Bloqueado";
-    setComerciantes((prev) =>
-      prev.map((x) =>
-        x.id === c.id
-          ? {
-              ...x,
-              estado: bloqueado ? "Regular" : "Bloqueado",
-              motivoBloqueio: bloqueado ? undefined : "Bloqueio manual pelo gestor",
-            }
-          : x
-      )
-    );
+  async function toggleStatus(merchant) {
+    const status = merchant.estado === "Bloqueado" ? "Regular" : "Bloqueado";
+    try {
+      const updated = await apiPatch(`/admin/merchants/${merchant.id}/status`, {
+        status,
+        reason: status === "Bloqueado" ? "Bloqueio efectuado pela administração" : null,
+      });
+      setMerchants((current) => current.map((item) =>
+        item.id === updated.id ? mapMerchant(updated) : item
+      ));
+    } catch (requestError) {
+      setError(requestError.message);
+    }
   }
 
   return (
     <div className="space-y-6">
-      {/* Cabeçalho */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-text">Comerciantes</h1>
           <p className="mt-1 text-sm text-text-muted">
-            {comerciantes.length} comerciantes registados nos mercados informais.
+            {merchants.length} comerciantes registados.
           </p>
         </div>
-        <Link to="/comerciantes/novo">
-          <Button>
-            <Plus size={16} />
-            Novo comerciante
-          </Button>
-        </Link>
+        <Link to="/comerciantes/novo"><Button><Plus size={16} /> Novo comerciante</Button></Link>
       </div>
 
-      {/* Filtros */}
       <Card className="flex flex-wrap items-center gap-3 p-4">
         <div className="relative w-full max-w-sm">
-          <Search
-            size={16}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
-          />
-          <input
-            type="text"
+          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+          <input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }}
             placeholder="Pesquisar por nome, NUIT ou telefone…"
-            value={pesquisa}
-            onChange={resetPage(setPesquisa)}
-            className="h-10 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-sm text-text placeholder:text-text-muted/70 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-          />
+            className="h-10 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
         </div>
-
-        <select
-          value={mercado}
-          onChange={resetPage(setMercado)}
-          className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-        >
+        <select value={marketFilter} onChange={(event) => { setMarketFilter(event.target.value); setPage(1); }}
+          className="h-10 rounded-lg border border-border bg-white px-3 text-sm">
           <option value="">Todos os mercados</option>
-          {MERCADOS.map((m) => (
-            <option key={m.id} value={m.nome}>
-              {m.nome}
-            </option>
-          ))}
+          {markets.map((market) => <option key={market.id} value={market.name}>{market.name}</option>)}
         </select>
-
-        <select
-          value={produto}
-          onChange={resetPage(setProduto)}
-          className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-        >
+        <select value={productFilter} onChange={(event) => { setProductFilter(event.target.value); setPage(1); }}
+          className="h-10 rounded-lg border border-border bg-white px-3 text-sm">
           <option value="">Todos os produtos</option>
-          {TIPOS_PRODUTO.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
+          {products.map((product) => <option key={product} value={product}>{product}</option>)}
         </select>
-
-        <select
-          value={estado}
-          onChange={resetPage(setEstado)}
-          className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-        >
+        <select value={stateFilter} onChange={(event) => { setStateFilter(event.target.value); setPage(1); }}
+          className="h-10 rounded-lg border border-border bg-white px-3 text-sm">
           <option value="">Todos os estados</option>
           <option value="Regular">Regular</option>
           <option value="Em dívida">Em dívida</option>
@@ -155,79 +122,33 @@ export default function ComerciantesPage() {
         </select>
       </Card>
 
-      {/* Tabela */}
+      {error && <p role="alert" className="rounded-lg border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">{error}</p>}
       <Card className="overflow-hidden p-0">
         <Table>
-          <THead>
-            <TH>Nome</TH>
-            <TH>NUIT</TH>
-            <TH>Contacto</TH>
-            <TH>Mercado / Banca</TH>
-            <TH>Tipo de produto</TH>
-            <TH>Taxa aplicável</TH>
-            <TH>Estado</TH>
-            <TH className="text-right">Acções</TH>
-          </THead>
+          <THead><TH>Nome</TH><TH>NUIT</TH><TH>Contacto</TH><TH>Mercado / Banca</TH><TH>Produto</TH><TH>Taxa</TH><TH>Estado</TH><TH className="text-right">Acções</TH></THead>
           <TBody>
-            {pageItems.map((c) => (
-              <TR key={c.id}>
-                <TD className="font-medium text-text">{c.nome}</TD>
-                <TD className="font-mono text-xs text-text-muted">{c.nuit}</TD>
-                <TD className="text-text-muted">{c.contacto}</TD>
-                <TD className="text-text">
-                  <span className="block text-sm">{c.mercado}</span>
-                  <span className="font-mono text-xs text-text-muted">
-                    {c.banca}
-                  </span>
-                </TD>
-                <TD className="text-text">{c.produto}</TD>
-                <TD className="text-text-muted">{c.taxa}</TD>
-                <TD>
-                  <Tooltip content={c.motivoBloqueio || ""}>
-                    <Badge variant={estadoVariants[c.estado]}>{c.estado}</Badge>
-                  </Tooltip>
-                </TD>
+            {pageItems.map((merchant) => (
+              <TR key={merchant.id}>
+                <TD className="font-medium text-text">{merchant.nome}</TD>
+                <TD className="font-mono text-xs text-text-muted">{merchant.nuit}</TD>
+                <TD className="text-text-muted">{merchant.contacto}</TD>
+                <TD><span className="block text-sm">{merchant.mercado}</span><span className="font-mono text-xs text-text-muted">{merchant.banca}</span></TD>
+                <TD>{merchant.produto}</TD><TD className="text-text-muted">{merchant.taxa}</TD>
+                <TD><Tooltip content={merchant.motivoBloqueio || ""}><Badge variant={stateVariants[merchant.estado] || "neutral"}>{merchant.estado}</Badge></Tooltip></TD>
                 <TD className="text-right">
                   <div className="flex items-center justify-end gap-1">
-                    <button
-                      className="rounded-md p-1.5 text-text-muted hover:bg-slate-100 hover:text-text"
-                      title="Ver"
-                      onClick={() => alert(`Ver ${c.nome} (mock).`)}
-                    >
-                      <Eye size={16} />
-                    </button>
-                    <button
-                      className="rounded-md p-1.5 text-text-muted hover:bg-slate-100 hover:text-text"
-                      title="Editar"
-                      onClick={() => alert(`Editar ${c.nome} (mock).`)}
-                    >
-                      <Pencil size={16} />
-                    </button>
-                    <button
-                      className="rounded-md p-1.5 text-text-muted hover:bg-slate-100 hover:text-text"
-                      title={c.estado === "Bloqueado" ? "Desbloquear" : "Bloquear"}
-                      onClick={() => toggleBloqueio(c)}
-                    >
-                      {c.estado === "Bloqueado" ? (
-                        <Unlock size={16} />
-                      ) : (
-                        <Lock size={16} />
-                      )}
+                    <Link to={`/comerciantes/novo?id=${merchant.id}`} className="rounded-md p-1.5 text-text-muted hover:bg-slate-100" title="Editar comerciante"><Pencil size={16} /></Link>
+                    <button className="rounded-md p-1.5 text-text-muted hover:bg-slate-100" title={merchant.estado === "Bloqueado" ? "Desbloquear" : "Bloquear"} onClick={() => toggleStatus(merchant)}>
+                      {merchant.estado === "Bloqueado" ? <Unlock size={16} /> : <Lock size={16} />}
                     </button>
                   </div>
                 </TD>
               </TR>
             ))}
-            {pageItems.length === 0 && (
-              <TR>
-                <TD className="py-8 text-center text-sm text-text-muted">
-                  Nenhum comerciante encontrado.
-                </TD>
-              </TR>
-            )}
+            {!loading && pageItems.length === 0 && <TR><TD className="py-8 text-center text-sm text-text-muted">{error ? "Não foi possível carregar os comerciantes." : "Nenhum comerciante encontrado."}</TD></TR>}
+            {loading && <TR><TD className="py-8 text-center text-sm text-text-muted">A carregar comerciantes…</TD></TR>}
           </TBody>
         </Table>
-
         <Pagination page={page} totalPages={totalPages} onChange={setPage} />
       </Card>
     </div>

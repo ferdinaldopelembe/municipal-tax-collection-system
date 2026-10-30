@@ -6,8 +6,8 @@ import Input from "../../components/ui/Input";
 import Button from "../../components/ui/Button";
 
 const highlights = [
-  { icon: QrCode, text: "Senhas digitais com QR code" },
-  { icon: Wallet, text: "Pagamentos por M-Pesa, e-Mola e Mkesh" },
+  { icon: QrCode, text: "Recibos de pagamento imprimíveis" },
+  { icon: Wallet, text: "Pagamentos em numerário" },
   { icon: TrendingUp, text: "Relatórios de arrecadação em tempo real" },
 ];
 
@@ -90,7 +90,7 @@ export default function LoginPage() {
               label="Telefone ou e-mail"
               type="text"
               autoComplete="username"
-              placeholder="admin@beira.gov.mz"
+              placeholder="E-mail ou telefone da conta"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               required
@@ -106,16 +106,6 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
             />
-
-            <div className="flex justify-end">
-              <button
-                type="button"
-                className="text-sm font-medium text-primary hover:text-primary-hover"
-                onClick={() => alert("Recuperação de senha será enviada por SMS (mock).")}
-              >
-                Esqueci a minha senha
-              </button>
-            </div>
 
             {error && (
               <div className="rounded-lg border border-danger/20 bg-danger/5 px-3 py-2.5 text-sm text-danger">

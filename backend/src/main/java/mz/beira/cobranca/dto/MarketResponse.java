@@ -2,14 +2,25 @@ package mz.beira.cobranca.dto;
 
 import java.util.List;
 import mz.beira.cobranca.models.Market;
-import mz.beira.cobranca.models.Stall;
 
-public record MarketResponse(Long id, String name, List<StallResponse> stalls) {
-    public static MarketResponse from(Market market, List<Stall> stalls) {
+public record MarketResponse(
+    Long id,
+    String name,
+    String location,
+    String manager,
+    boolean active,
+    long merchantCount,
+    List<StallResponse> stalls
+) {
+    public static MarketResponse from(Market market, List<StallResponse> stalls, long merchantCount) {
         return new MarketResponse(
             market.getId(),
             market.getName(),
-            stalls.stream().map(StallResponse::from).toList()
+            market.getLocation(),
+            market.getManager(),
+            market.isActive(),
+            merchantCount,
+            stalls
         );
     }
 }

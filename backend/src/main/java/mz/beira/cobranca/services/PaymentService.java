@@ -38,14 +38,20 @@ public class PaymentService {
 
     @Transactional
     public PaymentResponse makePayment(Account account, PaymentRequest request) {
-        if (!List.of("Numerário", "M-Pesa", "e-Mola", "Mkesh").contains(request.method())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Método de pagamento inválido.");
+        if (!"Numerário".equals(request.method())) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Actualmente, só são aceites pagamentos em numerário."
+            );
         }
         if (!"MERCHANT".equals(account.getRole())
             || account.getMarket() == null
             || account.getStall() == null
             || account.getProduct() == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "A conta não está associada a um comerciante.");
+        }
+        if (!account.getMarket().isActive()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "O mercado está inactivo e não aceita pagamentos.");
         }
 
         Rate rate = rates.findByMarketIdAndProductIgnoreCaseAndActiveTrue(
@@ -71,6 +77,12 @@ public class PaymentService {
                 end = today.with(TemporalAdjusters.lastDayOfMonth());
             }
             default -> throw new ResponseStatusException(HttpStatus.CONFLICT, "Periodicidade da taxa inválida.");
+        }
+        if (payments.existsByAccountIdAndPeriodStartAndPeriodEnd(account.getId(), start, end)) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "O pagamento deste período já foi registado."
+            );
         }
 
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 10).toUpperCase();
