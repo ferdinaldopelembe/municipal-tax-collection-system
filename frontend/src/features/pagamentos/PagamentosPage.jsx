@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Plus,
@@ -21,7 +21,12 @@ import {
   TD,
 } from "../../components/ui/Table";
 import Pagination from "../../components/ui/Pagination";
-import { PAGAMENTOS, MERCADOS } from "../../data/mock";
+import useAuth from "../../context/useAuth";
+import ComerciantePagamentosPage from "./ComerciantePagamentosPage";
+import { exportReceiptPdf } from "../../utils/exportReceiptPdf";
+import { api } from "../../lib/api";
+import { mapApiPayment } from "./paymentView";
+import { getStoredPayments } from "./paymentStorage";
 
 const PAGE_SIZE = 8;
 
@@ -39,12 +44,44 @@ const fmtMT = (v) =>
   }) + " MT";
 
 export default function PagamentosPage() {
-  const [pagamentos] = useState(PAGAMENTOS);
+  const { user } = useAuth();
+  return user?.role === "Administrador"
+    ? <AdminPagamentosPage />
+    : <ComerciantePagamentosPage />;
+}
+
+function AdminPagamentosPage() {
+  const [pagamentos, setPagamentos] = useState([]);
+  const [mercados, setMercados] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [pesquisa, setPesquisa] = useState("");
   const [mercado, setMercado] = useState("");
   const [estado, setEstado] = useState("");
   const [periodo, setPeriodo] = useState("");
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([api("/payments"), api("/catalog/markets")])
+      .then(([payments, marketItems]) => {
+        if (!active) return;
+        setPagamentos([
+          ...payments.map(mapApiPayment),
+          ...getStoredPayments(),
+        ]);
+        setMercados(marketItems);
+      })
+      .catch((requestError) => {
+        if (active) setError(requestError.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const filtrados = useMemo(() => {
     const q = pesquisa.trim().toLowerCase();
@@ -150,9 +187,9 @@ export default function PagamentosPage() {
           className="h-10 rounded-lg border border-border bg-white px-3 text-sm text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
         >
           <option value="">Todos os mercados</option>
-          {MERCADOS.map((m) => (
-            <option key={m.id} value={m.nome}>
-              {m.nome}
+          {mercados.map((market) => (
+          <option key={market.id} value={market.name}>
+            {market.name}
             </option>
           ))}
         </select>
@@ -180,6 +217,8 @@ export default function PagamentosPage() {
 
       {/* Tabela */}
       <Card className="overflow-hidden p-0">
+        {error && <p className="p-4 text-sm text-danger">{error}</p>}
+        {loading && <p className="p-4 text-sm text-text-muted">A carregar pagamentos…</p>}
         <Table>
           <THead>
             <TH>Senha</TH>
@@ -235,8 +274,8 @@ export default function PagamentosPage() {
                     </button>
                     <button
                       className="rounded-md p-1.5 text-text-muted hover:bg-slate-100 hover:text-text disabled:opacity-40"
-                      title="Reimprimir"
-                      onClick={() => alert(`Reimprimir ${p.senha} (mock).`)}
+                      title="Imprimir recibo"
+                      onClick={() => exportReceiptPdf(p)}
                       disabled={p.estado !== "Pago"}
                     >
                       <Printer size={16} />
@@ -253,7 +292,7 @@ export default function PagamentosPage() {
                 </TD>
               </TR>
             ))}
-            {pageItems.length === 0 && (
+            {!loading && !error && pageItems.length === 0 && (
               <TR>
                 <TD className="py-8 text-center text-sm text-text-muted">
                   Nenhum pagamento encontrado.

@@ -7,8 +7,11 @@ import Badge from "../../components/ui/Badge";
 import {
   COMERCIANTES,
   METODOS_PAGAMENTO_OPCOES,
-  PAGAMENTOS,
 } from "../../data/mock";
+import useAuth from "../../context/useAuth";
+import { getNextPaymentReference, savePayment } from "./paymentStorage";
+import ComerciantePagamentoPage from "./ComerciantePagamentoPage";
+import { exportReceiptPdf } from "../../utils/exportReceiptPdf";
 
 const TIPO_TAXAS = ["Diária", "Semanal", "Mensal"];
 
@@ -47,13 +50,6 @@ function parseTipo(valor) {
   return "Mensal";
 }
 
-function getNextSenha() {
-  const ultimoNum = Math.max(
-    ...PAGAMENTOS.map((p) => parseInt(p.senha.split("-").pop(), 10))
-  );
-  return `PAG-2025-${String(ultimoNum + 1).padStart(6, "0")}`;
-}
-
 const badgeEstado = {
   Regular: "success",
   "Em dívida": "warning",
@@ -61,7 +57,15 @@ const badgeEstado = {
 };
 
 export default function RegistarPagamentoPage() {
+  const { user } = useAuth();
+  return user?.role === "Administrador"
+    ? <AdminRegistarPagamentoPage />
+    : <ComerciantePagamentoPage />;
+}
+
+function AdminRegistarPagamentoPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [comercianteId, setComercianteId] = useState("");
   const [tipo, setTipo] = useState("");
@@ -119,18 +123,23 @@ export default function RegistarPagamentoPage() {
     }
     const now = new Date();
     const dataStr = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-    setSucesso({
-      senha: getNextSenha(),
+    const payment = {
+      senha: getNextPaymentReference(),
       comerciante: comerciante.nome,
       mercado: comerciante.mercado,
       banca: comerciante.banca,
       tipo,
+      taxa: tipo,
       periodo,
       metodo,
       referencia: referencia.trim() || "—",
       valor,
       data: dataStr,
-    });
+      estado: "Pago",
+      ownerId: user.id,
+    };
+    const savedPayment = savePayment(payment);
+    setSucesso(savedPayment);
   }
 
   function resetar() {
@@ -212,7 +221,7 @@ export default function RegistarPagamentoPage() {
 
           <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
             <button
-              onClick={() => window.print()}
+              onClick={() => exportReceiptPdf(sucesso)}
               className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-2 text-sm font-medium text-text hover:bg-slate-50"
             >
               <Printer size={16} /> Imprimir senha

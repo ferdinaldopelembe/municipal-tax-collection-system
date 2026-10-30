@@ -1,33 +1,18 @@
 import { NavLink } from "react-router-dom";
-import {
-  LayoutDashboard,
-  Store,
-  Users,
-  Receipt,
-  Ticket,
-  CreditCard,
-  ShieldCheck,
-  BarChart3,
-  History,
-  Settings,
-  Landmark,
-} from "lucide-react";
+import { Landmark } from "lucide-react";
 import { cn } from "../../lib/cn";
-
-export const navItems = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/mercados", label: "Mercados", icon: Store },
-  { to: "/comerciantes", label: "Comerciantes", icon: Users },
-  { to: "/taxas", label: "Taxas", icon: Receipt },
-  { to: "/senhas", label: "Senhas", icon: Ticket },
-  { to: "/pagamentos", label: "Pagamentos", icon: CreditCard },
-  { to: "/fiscais", label: "Fiscais", icon: ShieldCheck },
-  { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
-  { to: "/auditoria", label: "Auditoria", icon: History },
-  { to: "/configuracoes", label: "Configurações", icon: Settings },
-];
+import useLanguage from "../../context/useLanguage";
+import { navItems } from "./navItems";
+import useAuth from "../../context/useAuth";
 
 export default function Sidebar() {
+  const { t } = useLanguage();
+  const { user } = useAuth();
+  const visibleItems =
+    user?.role === "Administrador"
+      ? navItems
+      : navItems.filter((item) => item.to === "/pagamentos");
+
   return (
     <aside className="fixed inset-y-0 left-0 z-20 flex w-60 flex-col border-r border-border bg-white">
       {/* Logótipo */}
@@ -41,7 +26,7 @@ export default function Sidebar() {
       {/* Navegação */}
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         <ul className="space-y-1">
-          {navItems.map(({ to, label, icon: Icon }) => (
+          {visibleItems.map(({ to, label, icon: Icon }) => (
             <li key={to}>
               <NavLink
                 to={to}
@@ -61,7 +46,7 @@ export default function Sidebar() {
                       strokeWidth={1.75}
                       className={isActive ? "text-primary" : "text-text-muted"}
                     />
-                    <span>{label}</span>
+                    <span>{t(label)}</span>
                   </>
                 )}
               </NavLink>

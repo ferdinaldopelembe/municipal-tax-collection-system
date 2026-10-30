@@ -1,8 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
+import useAuth from "./context/useAuth";
+import LanguageProvider from "./context/LanguageProvider";
 import { ProtectedRoute } from "./routes/router";
 import AppLayout from "./components/layout/AppLayout";
 import LoginPage from "./features/auth/LoginPage";
+import RegisterPage from "./features/auth/RegisterPage";
 import FiscaisPage from "./features/fiscais/FiscaisPage";
 import NovoFiscalPage from "./features/fiscais/NovoFiscalPage";
 import DashboardPage from "./features/dashboard/DashboardPage";
@@ -32,41 +35,55 @@ function Placeholder({ title }) {
   );
 }
 
+function HomeRedirect() {
+  const { user } = useAuth();
+  return (
+    <Navigate
+      to={user?.role === "Administrador" ? "/dashboard" : "/pagamentos"}
+      replace
+    />
+  );
+}
+
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
+    <LanguageProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/registo" element={<RegisterPage />} />
 
-          <Route element={<ProtectedRoute />}>
-            <Route element={<AppLayout />}>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<DashboardPage />} />
-              <Route path="/mercados" element={<MercadosPage />} />
-              <Route path="/mercados/:id" element={<MercadoDetailPage />} />
-              <Route path="/comerciantes" element={<ComerciantesPage />} />
-              <Route path="/comerciantes/novo" element={<NovoComerciantePage />} />
-              <Route path="/taxas" element={<TaxasPage />} />
-              <Route path="/taxas/nova" element={<NovaTaxaPage />} />
-              <Route path="/senhas" element={<SenhasPage />} />
-              <Route path="/senhas/nova" element={<EmitirSenhaPage />} />
-              <Route path="/senhas/:id" element={<Placeholder title="Detalhe da senha" />} />        
-              <Route path="/pagamentos" element={<PagamentosPage />} />
-              <Route path="/pagamentos/novo" element={<RegistarPagamentoPage />} />
-              <Route path="/fiscais" element={<FiscaisPage />} />
-              <Route path="/fiscais/novo" element={<NovoFiscalPage />} />
-              <Route path="/fiscais/novo" element={<Placeholder title="Novo fiscal" />} />
-              <Route path="/relatorios" element={<RelatoriosPage />} />
-              <Route path="/auditoria" element={<AuditoriaPage />} />
-              <Route path="/configuracoes" element={<ConfiguracoesPage />} />
+            <Route element={<ProtectedRoute />}>
+              <Route element={<AppLayout />}>
+                <Route path="/" element={<HomeRedirect />} />
+                <Route path="/pagamentos" element={<PagamentosPage />} />
+                <Route path="/pagamentos/novo" element={<RegistarPagamentoPage />} />
+
+                <Route element={<ProtectedRoute allowedRoles={["Administrador"]} />}>
+                  <Route path="/dashboard" element={<DashboardPage />} />
+                  <Route path="/mercados" element={<MercadosPage />} />
+                  <Route path="/mercados/:id" element={<MercadoDetailPage />} />
+                  <Route path="/comerciantes" element={<ComerciantesPage />} />
+                  <Route path="/comerciantes/novo" element={<NovoComerciantePage />} />
+                  <Route path="/taxas" element={<TaxasPage />} />
+                  <Route path="/taxas/nova" element={<NovaTaxaPage />} />
+                  <Route path="/senhas" element={<SenhasPage />} />
+                  <Route path="/senhas/nova" element={<EmitirSenhaPage />} />
+                  <Route path="/senhas/:id" element={<Placeholder title="Detalhe da senha" />} />
+                  <Route path="/fiscais" element={<FiscaisPage />} />
+                  <Route path="/fiscais/novo" element={<NovoFiscalPage />} />
+                  <Route path="/relatorios" element={<RelatoriosPage />} />
+                  <Route path="/auditoria" element={<AuditoriaPage />} />
+                  <Route path="/configuracoes" element={<ConfiguracoesPage />} />
+                </Route>
+              </Route>
             </Route>
 
-          </Route>
-
-          <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+            <Route path="*" element={<Navigate to="/login" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
+    </LanguageProvider>
   );
 }

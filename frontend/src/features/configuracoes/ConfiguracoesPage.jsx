@@ -11,6 +11,9 @@ import {
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import { CONFIGURACOES } from "../../data/mock";
+import useLanguage from "../../context/useLanguage";
+import { LANGUAGES } from "../../context/languages";
+import LocalizedContent from "../../context/LocalizedContent";
 
 const abas = [
     { id: "geral", label: "Geral", icon: Settings },
@@ -20,8 +23,12 @@ const abas = [
 ];
 
 export default function ConfiguracoesPage() {
+    const { language, setLanguage } = useLanguage();
     const [abaAtiva, setAbaAtiva] = useState("geral");
-    const [config, setConfig] = useState(CONFIGURACOES);
+    const [config, setConfig] = useState(() => ({
+        ...CONFIGURACOES,
+        geral: { ...CONFIGURACOES.geral, idioma: language },
+    }));
     const [guardado, setGuardado] = useState(false);
 
     function atualizar(seccao, campo, valor) {
@@ -39,11 +46,19 @@ export default function ConfiguracoesPage() {
     }
 
     function restaurar() {
-        setConfig(CONFIGURACOES);
+        setConfig({
+            ...CONFIGURACOES,
+            geral: {
+                ...CONFIGURACOES.geral,
+                idioma: LANGUAGES.portuguese,
+            },
+        });
+        setLanguage(LANGUAGES.portuguese);
         setGuardado(false);
     }
 
     return (
+        <LocalizedContent>
         <div className="space-y-6">
             {/* Cabeçalho */}
             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -143,11 +158,14 @@ export default function ConfiguracoesPage() {
                                 <Campo label="Idioma">
                                     <select
                                         value={config.geral.idioma}
-                                        onChange={(e) => atualizar("geral", "idioma", e.target.value)}
+                                        onChange={(e) => {
+                                            atualizar("geral", "idioma", e.target.value);
+                                            setLanguage(e.target.value);
+                                        }}
                                         className={inputCls}
                                     >
-                                        <option value="Português (Moçambique)">Português (Moçambique)</option>
-                                        <option value="English">English</option>
+                                        <option value={LANGUAGES.portuguese}>{LANGUAGES.portuguese}</option>
+                                        <option value={LANGUAGES.english}>{LANGUAGES.english}</option>
                                     </select>
                                 </Campo>
                                 <Campo label="Fuso horário">
@@ -496,6 +514,7 @@ export default function ConfiguracoesPage() {
                 </div>
             </div>
         </div>
+        </LocalizedContent>
     );
 }
 

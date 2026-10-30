@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Landmark, QrCode, Wallet, TrendingUp } from "lucide-react";
-import { useAuth } from "../../context/AuthContext";
+import useAuth from "../../context/useAuth";
 import Input from "../../components/ui/Input";
 import Button from "../../components/ui/Button";
 
@@ -15,7 +15,7 @@ export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = location.state?.from?.pathname || "/dashboard";
+  const from = location.state?.from?.pathname;
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -27,8 +27,11 @@ export default function LoginPage() {
     setError("");
     setSubmitting(true);
     try {
-      await login({ identifier, password });
-      navigate(from, { replace: true });
+      const loggedInUser = await login({ identifier, password });
+      navigate(
+        from || (loggedInUser.role === "Administrador" ? "/dashboard" : "/pagamentos"),
+        { replace: true }
+      );
     } catch (err) {
       setError(err.message);
     } finally {
@@ -78,7 +81,7 @@ export default function LoginPage() {
 
           <h2 className="text-2xl font-semibold text-text">Entrar</h2>
           <p className="mt-1 text-sm text-text-muted">
-            Acesse o painel de gestão do município.
+            Entre para aceder às funcionalidades disponíveis para a sua conta.
           </p>
 
           <form onSubmit={handleSubmit} className="mt-8 space-y-5">
@@ -129,6 +132,13 @@ export default function LoginPage() {
               {submitting ? "A entrar…" : "Entrar"}
             </Button>
           </form>
+
+          <p className="mt-6 text-center text-sm text-text-muted">
+            Ainda não tem conta?{" "}
+            <Link to="/registo" className="font-medium text-primary hover:text-primary-hover">
+              Criar conta
+            </Link>
+          </p>
 
           <p className="mt-10 text-center text-xs text-text-muted lg:hidden">
             © 2026 Município da Beira

@@ -32,6 +32,10 @@ export function TR({ children, className }) {
   );
 }
 
-export function TD({ children, className }) {
-  return <td className={cn("px-5 py-3", className)}>{children}</td>;
+export function TD({ children, className, ...rest }) {
+  return (
+    <td className={cn("px-5 py-3", className)} {...rest}>
+      {children}
+    </td>
+  );
 }
