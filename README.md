@@ -41,7 +41,7 @@ Abra `http://localhost:5173`. Comerciantes podem criar a própria conta no ecrã
 
 ## Persistência e configuração
 
-- A base de dados H2 fica, por omissão, em `~/cobranca-beira/cobranca.mv.db`. Pare a API antes de copiar esse ficheiro para uma cópia de segurança.
+- A base de dados H2 fica em `backend/data/cobranca.mv.db` (o caminho `data/` é relativo à pasta `backend`, de onde a API é iniciada nos comandos acima). O ficheiro é ignorado pelo Git para manter os dados locais fora do repositório. Pare a API antes de copiar esse ficheiro para uma cópia de segurança.
 - A aplicação inicializa exemplos de mercados, bancas e taxas. Confirme e substitua estes dados pelos dados oficiais antes de utilização operacional.
 - `COBRANCA_CORS_ORIGINS` define as origens permitidas, separadas por vírgulas. O valor local por omissão permite Vite em `localhost:5173` e `127.0.0.1:5173`.
 - Em HTTPS, defina `COBRANCA_COOKIE_SECURE=true`. Não exponha a API nem o H2 a redes públicas sem HTTPS, cópias de segurança e uma configuração de produção adequada.
